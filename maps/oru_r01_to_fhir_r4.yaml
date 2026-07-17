@@ -1,0 +1,26 @@
+id: oru_r01_to_fhir_r4
+messageType: ORU^R01
+target: fhir/R4
+resources:
+  - type: Patient
+    from: PID
+    map:
+      - { from: "PID-3[1].1", to: "identifier[0].value" }
+      - { from: PID-5.1, to: "name[0].family" }
+      - { from: PID-5.2, to: "name[0].given[0]" }
+      - { from: PID-7, to: birthDate, transform: hl7_datetime }
+      - { from: PID-8, to: gender, transform: hl7_sex }
+  - type: Observation
+    from: OBX
+    map:
+      - { from: OBX-11, to: status, transform: hl7_result_status }
+      - { from: OBX-3.1, to: "code.coding[0].code" }
+      - { from: OBX-3.2, to: "code.coding[0].display" }
+      # TODO(mapeo): code.coding[0].system solo si OBX-3.3 == "LN" → http://loinc.org; requiere validación de Glenn.
+      - { from: OBX-5, to: ".", transform: obx_value_by_obx2 }
+      - { from: OBX-14, to: effectiveDateTime, transform: hl7_datetime }
+      - { to: subject, ref: Patient }
+notes: >-
+  TODO(mapeo): DiagnosticReport por OBR (status OBR-25, code OBR-4, result[] →
+  Observations del grupo) requiere validación de Glenn; US Core DiagnosticReport
+  exige OBR-4. Sin NTE → Observation.note en v0.1.

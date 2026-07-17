@@ -1,0 +1,27 @@
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000001",
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "value": "123456" }],
+        "name": [{ "family": "DOE", "given": ["JOHN"] }],
+        "birthDate": "1980-01-01",
+        "gender": "male"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000002",
+      "resource": {
+        "resourceType": "ServiceRequest",
+        "status": "active",
+        "intent": "order",
+        "code": { "coding": [{ "code": "1554-5", "display": "GLUCOSE" }] },
+        "authoredOn": "2026-01-03T09:15:00",
+        "subject": { "reference": "urn:uuid:00000000-0000-4000-8000-000000000001" }
+      }
+    }
+  ]
+}

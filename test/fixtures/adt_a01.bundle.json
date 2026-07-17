@@ -1,0 +1,35 @@
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000001",
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [{ "value": "123456" }],
+        "name": [{ "family": "DOE", "given": ["JOHN"] }],
+        "birthDate": "1980-01-01",
+        "gender": "male",
+        "address": [
+          {
+            "line": ["123 MAIN ST"],
+            "city": "METROPOLIS",
+            "state": "IL",
+            "postalCode": "44123",
+            "country": "USA"
+          }
+        ],
+        "telecom": [{ "system": "phone", "value": "(555)555-1234" }]
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000002",
+      "resource": {
+        "resourceType": "Encounter",
+        "status": "in-progress",
+        "class": { "code": "I" },
+        "subject": { "reference": "urn:uuid:00000000-0000-4000-8000-000000000001" }
+      }
+    }
+  ]
+}

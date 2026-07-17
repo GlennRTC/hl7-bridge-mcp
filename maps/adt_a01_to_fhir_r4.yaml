@@ -1,0 +1,30 @@
+id: adt_a01_to_fhir_r4
+messageType: ADT^A01
+target: fhir/R4
+resources:
+  - type: Patient
+    from: PID
+    map:
+      - { from: "PID-3[1].1", to: "identifier[0].value" }
+      # TODO(mapeo): PID-3.4 (assigning authority) → identifier.system como URI requiere validación de Glenn.
+      # TODO(mapeo): repeticiones adicionales de PID-3 (SS, etc.) → identifier[n]; el motor aún mapea solo repeticiones explícitas.
+      - { from: PID-5.1, to: "name[0].family" }
+      - { from: PID-5.2, to: "name[0].given[0]" }
+      - { from: PID-7, to: birthDate, transform: hl7_datetime }
+      - { from: PID-8, to: gender, transform: hl7_sex }
+      - { from: PID-11.1, to: "address[0].line[0]" }
+      - { from: PID-11.3, to: "address[0].city" }
+      - { from: PID-11.4, to: "address[0].state" }
+      - { from: PID-11.5, to: "address[0].postalCode" }
+      - { from: PID-11.6, to: "address[0].country" }
+      - { to: "telecom[0].system", value: phone }
+      - { from: PID-13, to: "telecom[0].value" }
+  - type: Encounter
+    from: PV1
+    map:
+      # A01 = admisión en curso.
+      - { to: status, value: in-progress }
+      - { from: PV1-2, to: class.code }
+      # TODO(mapeo): traducir tabla 0004 (I/O/E...) → v3-ActCode (IMP/AMB/EMER) y class.system requiere validación de Glenn.
+      - { to: subject, ref: Patient }
+notes: "Mapa mínimo de admisión. Sin NK1 (Patient.contact) ni PV1-7 (participant) en v0.1."

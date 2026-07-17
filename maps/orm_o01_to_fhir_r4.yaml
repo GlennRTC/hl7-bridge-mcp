@@ -1,0 +1,23 @@
+id: orm_o01_to_fhir_r4
+messageType: ORM^O01
+target: fhir/R4
+resources:
+  - type: Patient
+    from: PID
+    map:
+      - { from: "PID-3[1].1", to: "identifier[0].value" }
+      - { from: PID-5.1, to: "name[0].family" }
+      - { from: PID-5.2, to: "name[0].given[0]" }
+      - { from: PID-7, to: birthDate, transform: hl7_datetime }
+      - { from: PID-8, to: gender, transform: hl7_sex }
+  - type: ServiceRequest
+    from: ORC
+    map:
+      # TODO(mapeo): ServiceRequest.status según ORC-1/ORC-5 (NW→active, CA→revoked...) requiere validación de Glenn.
+      - { to: status, value: active }
+      - { to: intent, value: order }
+      - { from: OBR-4.1, to: "code.coding[0].code" }
+      - { from: OBR-4.2, to: "code.coding[0].display" }
+      - { from: ORC-9, to: authoredOn, transform: hl7_datetime }
+      - { to: subject, ref: Patient }
+notes: "Un ServiceRequest por ORC; OBR-4 se resuelve sobre la primera ocurrencia global en v0.1."
