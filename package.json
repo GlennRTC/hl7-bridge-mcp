@@ -1,0 +1,33 @@
+{
+  "name": "hl7-bridge-mcp",
+  "version": "0.0.1",
+  "description": "MCP server to parse, map and validate clinical messages between HL7 v2.x and FHIR R4/R6, with human-readable error explanations",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "hl7-bridge-mcp": "dist/server/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "fhirpath": "^5.0.0",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/fhir": "^0.0.44",
+    "@types/node": "^26.1.1",
+    "eslint": "^10.7.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.64.0",
+    "vitest": "^4.1.10"
+  }
+}
