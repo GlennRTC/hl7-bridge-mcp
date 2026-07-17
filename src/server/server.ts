@@ -27,7 +27,7 @@ function fail(e: unknown): CallToolResult {
 }
 
 export function createServer(): McpServer {
-  const server = new McpServer({ name: 'hl7-bridge-mcp', version: '0.0.1' });
+  const server = new McpServer({ name: 'hl7-bridge-mcp', version: '0.1.0' });
 
   server.registerTool(
     'parse_hl7v2',
