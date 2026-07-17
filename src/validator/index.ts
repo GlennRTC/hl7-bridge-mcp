@@ -1,0 +1,77 @@
+import fhirpath from 'fhirpath';
+import { Hl7BridgeError } from '../errors/index.js';
+import { messageTypeOf, resolveV2Path } from '../mapper/index.js';
+import { parseHl7v2 } from '../parser/index.js';
+import type { Hl7Message } from '../parser/types.js';
+import { FHIR_PROFILE, V2_REQUIREMENTS } from './catalog.js';
+
+export type { Explanation } from './explain.js';
+export { explainError } from './explain.js';
+export { FIELD_CATALOG, FHIR_PROFILE, HINTS, V2_REQUIREMENTS } from './catalog.js';
+
+export type Severity = 'error' | 'warning' | 'information';
+
+export interface Issue {
+  severity: Severity;
+  code: string;
+  /** Segmento-campo v2 (ej. "OBX-11") o FHIRPath (ej. "Observation.category"). */
+  location: string;
+  message: string;
+}
+
+export function validateV2(input: string | Hl7Message): Issue[] {
+  const msg = typeof input === 'string' ? parseHl7v2(input) : input;
+  const type = messageTypeOf(msg);
+  const req = V2_REQUIREMENTS[type];
+  if (!req) {
+    return [{ severity: 'warning', code: 'NO_PROFILE', location: 'MSH-9', message: `No hay reglas de validación para el tipo de mensaje "${type}".` }];
+  }
+  const issues: Issue[] = [];
+  for (const seg of req.segments) {
+    if (!msg.segments.some((s) => s.name === seg)) {
+      issues.push({ severity: 'error', code: 'MISSING_SEGMENT', location: seg, message: `Falta el segmento requerido ${seg} para ${type}.` });
+    }
+  }
+  for (const field of req.fields) {
+    const seg = field.split('-')[0]!;
+    if (!msg.segments.some((s) => s.name === seg)) continue; // ya reportado como MISSING_SEGMENT
+    if (resolveV2Path(msg, field) === undefined) {
+      issues.push({ severity: 'error', code: 'MISSING_FIELD', location: field, message: `Falta el campo requerido ${field} para ${type}.` });
+    }
+  }
+  return issues;
+}
+
+export function validateFhir(bundle: fhir4.Bundle): Issue[] {
+  const issues: Issue[] = [];
+  for (const entry of bundle.entry ?? []) {
+    const resource = entry.resource;
+    if (!resource) continue;
+    const rules = FHIR_PROFILE[resource.resourceType];
+    if (!rules) continue;
+    for (const rule of rules) {
+      // evaluate() sin opción async es síncrono; el tipo union obliga al cast.
+      const present = (fhirpath.evaluate(resource as object, `${rule.path}.exists()`) as unknown[])[0] === true;
+      if (!present) {
+        issues.push({ severity: 'error', code: 'PROFILE_REQUIRED', location: `${resource.resourceType}.${rule.path}`, message: rule.message });
+      }
+    }
+  }
+  return issues;
+}
+
+export type ValidateKind = 'hl7v2' | 'fhir';
+
+/** Entrada de la tool `validate_message`. `payload` es texto crudo (v2) o Bundle JSON (fhir). */
+export function validateMessage(payload: string | Hl7Message | fhir4.Bundle, kind: ValidateKind): Issue[] {
+  if (kind === 'hl7v2') {
+    if (typeof payload !== 'string' && !('segments' in payload)) {
+      throw new Hl7BridgeError('VALIDATE_INPUT', 'payload', 'kind "hl7v2" espera un mensaje HL7 v2 (texto o AST).');
+    }
+    return validateV2(payload);
+  }
+  if (typeof payload === 'string' || !('resourceType' in payload)) {
+    throw new Hl7BridgeError('VALIDATE_INPUT', 'payload', 'kind "fhir" espera un Bundle FHIR.');
+  }
+  return validateFhir(payload);
+}

@@ -167,7 +167,7 @@ function applyTransform(mapId: string, name: string, raw: string, segment: Segme
   return fn(raw, { segment, message });
 }
 
-function messageTypeOf(msg: Hl7Message): string {
+export function messageTypeOf(msg: Hl7Message): string {
   const msh9 = msg.segments[0]?.fields[8]?.repetitions[0];
   const type = msh9?.components[0]?.subcomponents[0] ?? '';
   const event = msh9?.components[1]?.subcomponents[0] ?? '';
