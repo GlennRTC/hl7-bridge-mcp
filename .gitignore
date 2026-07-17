@@ -1,0 +1,11 @@
+# Contexto de trabajo (no publicar)
+.claude/
+context/
+tasks/
+
+# Node
+node_modules/
+dist/
+coverage/
+*.log
+.env
