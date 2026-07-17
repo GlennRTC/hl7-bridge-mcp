@@ -11,10 +11,12 @@
     "hl7-bridge-mcp": "dist/server/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vitest run"
+    "test": "vitest run",
+    "start": "node dist/server/index.js",
+    "start:http": "node dist/server/http.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

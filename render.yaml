@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: hl7-bridge-mcp
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm run start:http
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
