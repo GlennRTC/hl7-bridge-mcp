@@ -16,6 +16,16 @@
       "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000002",
       "resource": {
         "resourceType": "Observation",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory"
+              }
+            ]
+          }
+        ],
         "status": "final",
         "code": { "coding": [{ "code": "1554-5", "display": "GLUCOSE" }] },
         "valueQuantity": { "value": 95, "unit": "mg/dL" },

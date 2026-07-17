@@ -13,6 +13,8 @@ resources:
   - type: Observation
     from: OBX
     map:
+      - { to: "category[0].coding[0].system", value: "http://terminology.hl7.org/CodeSystem/observation-category" }
+      - { to: "category[0].coding[0].code", value: laboratory }
       - { from: OBX-11, to: status, transform: hl7_result_status }
       - { from: OBX-3.1, to: "code.coding[0].code" }
       - { from: OBX-3.2, to: "code.coding[0].display" }
