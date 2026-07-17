@@ -2,6 +2,7 @@
 .claude/
 context/
 tasks/
+CLAUDE.md
 
 # Node
 node_modules/
