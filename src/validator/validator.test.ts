@@ -1,13 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 import { Hl7BridgeError } from '../errors/index.js';
-import { loadMaps, mapV2ToFhir } from '../mapper/index.js';
 import { explainError, validateFhir, validateMessage, validateV2, type Issue } from './index.js';
 
 const fixture = (name: string): string =>
   readFileSync(new URL(`../../test/fixtures/${name}`, import.meta.url), 'utf8');
 
-const maps = loadMaps();
 const codesAt = (issues: Issue[]) => issues.map((i) => `${i.code}@${i.location}`).sort();
 
 test('mensajes válidos no producen issues v2', () => {
@@ -36,7 +34,11 @@ test('tipo de mensaje sin reglas → NO_PROFILE (warning)', () => {
 });
 
 test('validación FHIR: Observation sin category incumple US Core', () => {
-  const bundle = mapV2ToFhir(fixture('oru_r01.hl7'), { maps });
+  const bundle: fhir4.Bundle = {
+    resourceType: 'Bundle',
+    type: 'collection',
+    entry: [{ resource: { resourceType: 'Observation', status: 'final', code: {}, subject: { reference: 'urn:x' } } as fhir4.Observation }],
+  };
   expect(codesAt(validateFhir(bundle))).toEqual(['PROFILE_REQUIRED@Observation.category']);
 });
 

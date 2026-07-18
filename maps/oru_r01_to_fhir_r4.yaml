@@ -13,6 +13,8 @@ resources:
   - type: Observation
     from: OBX
     map:
+      # category: constante deliberada, no un valor adivinado de un campo. HL7 v2 no tiene
+      # ningún campo que la porte y un ORU^R01 es siempre laboratorio (US Core la exige).
       - { to: "category[0].coding[0].system", value: "http://terminology.hl7.org/CodeSystem/observation-category" }
       - { to: "category[0].coding[0].code", value: laboratory }
       - { from: OBX-11, to: status, transform: hl7_result_status }
