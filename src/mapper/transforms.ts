@@ -13,6 +13,10 @@ export type Transform = (raw: string, ctx: TransformCtx) => unknown;
 const comp = (seg: Segment | undefined, field: number, component = 1): string =>
   seg?.fields[field - 1]?.repetitions[0]?.components[component - 1]?.subcomponents[0] ?? '';
 
+/** Tabla 0396 (sistema de codificación v2) → system URI FHIR. No registrado → undefined (no se adivina). */
+const codingSystemUri = (raw: string): string | undefined =>
+  ({ LN: 'http://loinc.org', SCT: 'http://snomed.info/sct' })[raw];
+
 export const transforms: Record<string, Transform> = {
   /**
    * TS HL7 (YYYY[MM[DD[HHMM[SS]]]][±ZZZZ]) → ISO 8601.
@@ -43,6 +47,9 @@ export const transforms: Record<string, Transform> = {
   hl7_result_status: (raw) =>
     ({ F: 'final', P: 'preliminary', C: 'corrected', X: 'cancelled', D: 'entered-in-error', I: 'registered' })[raw] ?? 'unknown',
 
+  /** Tabla 0396 (OBX-3.3) → system URI de Observation.code. */
+  hl7_coding_system: (raw) => codingSystemUri(raw),
+
   /** OBX-2 decide el tipo de Observation.value[x]; OBX-6 aporta la unidad para NM. */
   obx_value_by_obx2: (raw, { segment }) => {
     const type = comp(segment, 2);
@@ -58,10 +65,12 @@ export const transforms: Record<string, Transform> = {
         return { valueString: raw };
       case 'CE':
       case 'CWE': {
-        // TODO(mapeo): OBX-5.3 (coding system v2, ej. "LN") → system URI requiere validación de Glenn.
         const coding: fhir4.Coding = { code: comp(segment, 5, 1) };
         const display = comp(segment, 5, 2);
         if (display) coding.display = display;
+        const system = codingSystemUri(comp(segment, 5, 3)); // OBX-5.3, tabla 0396
+        if (system) coding.system = system;
+        // TODO(mapeo): CWE-4/5/6 (coding alternativo/traducción) → coding[1] con el mismo lookup; requiere validación de Glenn.
         return { valueCodeableConcept: { coding: [coding] } };
       }
       default:

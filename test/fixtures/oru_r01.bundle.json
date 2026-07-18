@@ -27,7 +27,7 @@
           }
         ],
         "status": "final",
-        "code": { "coding": [{ "code": "1554-5", "display": "GLUCOSE" }] },
+        "code": { "coding": [{ "code": "1554-5", "display": "GLUCOSE", "system": "http://loinc.org" }] },
         "valueQuantity": { "value": 95, "unit": "mg/dL" },
         "effectiveDateTime": "2026-01-02T07:45:00",
         "subject": { "reference": "urn:uuid:00000000-0000-4000-8000-000000000001" }

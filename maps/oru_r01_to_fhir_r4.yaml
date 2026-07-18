@@ -20,7 +20,8 @@ resources:
       - { from: OBX-11, to: status, transform: hl7_result_status }
       - { from: OBX-3.1, to: "code.coding[0].code" }
       - { from: OBX-3.2, to: "code.coding[0].display" }
-      # TODO(mapeo): code.coding[0].system solo si OBX-3.3 == "LN" → http://loinc.org; requiere validación de Glenn.
+      # OBX-3.3 (tabla 0396) → system URI; LN→LOINC, SCT→SNOMED. Códigos no registrados no pueblan system.
+      - { from: OBX-3.3, to: "code.coding[0].system", transform: hl7_coding_system }
       - { from: OBX-5, to: ".", transform: obx_value_by_obx2 }
       - { from: OBX-14, to: effectiveDateTime, transform: hl7_datetime }
       - { to: subject, ref: Patient }

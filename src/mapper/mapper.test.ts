@@ -24,6 +24,12 @@ test.each(['adt_a01', 'oru_r01', 'orm_o01'])('%s.hl7 → bundle esperado', (name
   expect(bundle).toEqual(JSON.parse(fixture(`${name}.bundle.json`)));
 });
 
+test('hl7_coding_system: LN→LOINC, código no registrado no puebla system', () => {
+  const cs = transforms['hl7_coding_system']!;
+  expect(cs('LN', { message: {} as never })).toBe('http://loinc.org');
+  expect(cs('99LOCAL', { message: {} as never })).toBeUndefined();
+});
+
 test('selección explícita por mapId', () => {
   const bundle = mapV2ToFhir(fixture('oru_r01.hl7'), { maps, mapId: 'oru_r01_to_fhir_r4', newId: seqIds() });
   expect(bundle).toEqual(JSON.parse(fixture('oru_r01.bundle.json')));
@@ -65,6 +71,14 @@ test('hl7_result_status: conocidos y desconocidos', () => {
   expect(transforms['hl7_result_status']!('F', ctx)).toBe('final');
   expect(transforms['hl7_result_status']!('P', ctx)).toBe('preliminary');
   expect(transforms['hl7_result_status']!('ZZ', ctx)).toBe('unknown');
+});
+
+test('obx_value_by_obx2: CE/CWE puebla system desde OBX-5.3 (tabla 0396)', () => {
+  const msg = parseHl7v2('MSH|^~\\&|A|B|||20260101||ORU^R01|1|P|2.5\rOBX|1|CE|664-3^COLOR^LN||Y^Yellow^LN||||||F');
+  const obx = msg.segments[1]!;
+  expect(transforms['obx_value_by_obx2']!('Y^Yellow^LN', { segment: obx, message: msg })).toEqual({
+    valueCodeableConcept: { coding: [{ code: 'Y', display: 'Yellow', system: 'http://loinc.org' }] },
+  });
 });
 
 test('obx_value_by_obx2: tipo no soportado → MAP_TRANSFORM', () => {
