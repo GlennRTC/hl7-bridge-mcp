@@ -85,23 +85,39 @@ curl -s -X POST localhost:3999/mcp \
 ```
 
 Resultado esperado — un `Bundle` con `Patient` (identifier 123456, name DOE JOHN, gender male,
-birthDate 1980-01-01) y `Observation` (status final, code 1554-5/GLUCOSE, valueQuantity 95 mg/dL,
-effectiveDateTime 2026-01-02T07:45:00, subject → Patient). Y una validación que señala la
-deuda de mapeo conocida:
+birthDate 1980-01-01) y `Observation` (status final, `category` laboratory, code 1554-5/GLUCOSE
+con `system` `http://loinc.org`, valueQuantity 95 mg/dL, effectiveDateTime 2026-01-02T07:45:00,
+subject → Patient). La validación sale **limpia**: `"validation": { "issues": [], "explained": [] }`.
+`category=laboratory` es una constante deliberada (HL7 v2 no la porta; un ORU es siempre
+laboratorio) y el `system` LOINC se deriva de OBX-3.3 = `LN` (tabla 0396).
+
+**Deuda de mapeo — `CODING_NO_SYSTEM`.** Cuando un valor codificado (OBX tipo CE/CWE) trae un
+sistema de codificación **no registrado** (ej. `99LOCAL`), el `system` no se adivina: el
+`valueCodeableConcept.coding` sale con `code`+`display` pero sin `system`, y la validación lo
+avisa como warning (no bloquea):
+
+```bash
+curl -s -X POST localhost:3999/mcp \
+  -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"map_v2_to_fhir","arguments":{"message":"MSH|^~\\&|LAB|H|EMR|H|20260102||ORU^R01|1|P|2.5\rPID|1||123456^^^H^MR||DOE^JOHN||19800101|M\rOBR|1||1|5778-6^COLOR^LN\rOBX|1|CE|5778-6^COLOR OF URINE^LN||Y^YELLOW^99LOCAL||||||F"}}}' | extract
+```
 
 ```json
 "validation": {
   "issues": [
-    { "severity":"error", "code":"PROFILE_REQUIRED", "location":"Observation.category",
-      "message":"US Core Observation requiere category." }
+    { "severity":"warning", "code":"CODING_NO_SYSTEM", "location":"Observation.valueCodeableConcept.coding[0]",
+      "message":"Coding con code \"Y\" pero sin system: el código es ambiguo entre sistemas de codificación." }
   ],
   "explained": [
-    { "humanMessage":"US Core Observation requiere category.",
-      "location":"Observation.category",
-      "hint":"El perfil FHIR exige este elemento (must-support). Ajusta el mapa o el mensaje de origen para poblarlo." }
+    { "humanMessage":"Coding con code \"Y\" pero sin system: el código es ambiguo entre sistemas de codificación.",
+      "location":"Observation.valueCodeableConcept.coding[0]",
+      "hint":"Añade el system URI del código (ej. http://loinc.org). En HL7 v2 suele venir en el 3.er componente (tabla 0396); si es local, registra su URI en el mapa." }
   ]
 }
 ```
+
+Si el mismo OBX usara `LN` en vez de `99LOCAL`, el `system` saldría `http://loinc.org` y no
+habría warning. Un `Coding` sin `code` es error `CODING_EMPTY` (no solo warning).
 
 `fhirVersion:"R6"` devuelve `isError` (`UNSUPPORTED_VERSION`): en v0.1 solo hay R4.
 
@@ -155,11 +171,12 @@ Mensajes sintéticos y qué debe producir cada uno. Los `.hl7` de referencia est
 | 3 | `orm_o01.hl7` (válido) | `validate_message` (hl7v2) | `issues: []` |
 | 4 | `invalid_adt_missing_name.hl7` | `validate_message` (hl7v2) | `MISSING_SEGMENT@PV1`, `MISSING_FIELD@PID-5` |
 | 5 | `invalid_oru_missing_obr_code.hl7` | `validate_message` (hl7v2) | `MISSING_SEGMENT@OBR`, `MISSING_FIELD@OBX-3` |
-| 6 | `oru_r01.hl7` | `map_v2_to_fhir` | Bundle Patient+Observation; issue `PROFILE_REQUIRED@Observation.category` |
+| 6 | `oru_r01.hl7` | `map_v2_to_fhir` | Bundle Patient+Observation (category laboratory, code con system LOINC); `issues: []` |
 | 7 | `orm_o01.hl7` | `map_v2_to_fhir` | Bundle Patient+ServiceRequest (status active, intent order, code 1554-5) |
 | 8 | Mensaje sin MSH | `parse_hl7v2` | `isError` con `INVALID_HEADER@MSH` |
 | 9 | Tipo `SIU^S12` (sin mapa) | `map_v2_to_fhir` | `isError` con `MAP_NOT_FOUND@MSH-9` |
 | 10 | Separadores `:-+?*` no estándar | `parse_hl7v2` | `ast.encoding.field=":"`, resto según MSH-2 |
+| 11 | OBX `CE` con `Y^YELLOW^99LOCAL` | `map_v2_to_fhir` | `valueCodeableConcept.coding` sin `system`; warning `CODING_NO_SYSTEM` |
 
 Casos límite cubiertos por los fixtures: repeticiones de campo (`~`, dos identificadores en
 PID-3), subcomponentes (`&`), secuencias de escape (`\T\` → `&`), y finales de línea `\r`,
@@ -173,8 +190,8 @@ Arranca el server (`PORT=3999 npm run start:http`) en otra terminal y ejecuta:
 extract() { sed -n 's/^data: //p' | python3 -c 'import sys,json; print(json.load(sys.stdin)["result"]["content"][0]["text"])'; }
 post() { curl -s -X POST localhost:3999/mcp -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d "$1" | extract; }
 
-# ORU válido → Bundle + issue de category
-post '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"map_v2_to_fhir","arguments":{"message":"MSH|^~\\&|LAB|H|EMR|H|20260102||ORU^R01|1|P|2.5\rPID|1||42||DOE^JOHN||19800101|M\rOBR|1||1|1554-5^GLUCOSE^LN\rOBX|1|NM|1554-5^GLUCOSE^LN||95|mg/dL|||||F"}}}' | grep -q 'Observation.category' && echo 'PASS: map+validate' || echo 'FAIL'
+# ORU con valor CE de sistema local → warning CODING_NO_SYSTEM
+post '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"map_v2_to_fhir","arguments":{"message":"MSH|^~\\&|LAB|H|EMR|H|20260102||ORU^R01|1|P|2.5\rPID|1||42||DOE^JOHN||19800101|M\rOBR|1||1|5778-6^COLOR^LN\rOBX|1|CE|5778-6^COLOR^LN||Y^YELLOW^99LOCAL||||||F"}}}' | grep -q 'CODING_NO_SYSTEM' && echo 'PASS: map+validate' || echo 'FAIL'
 
 # ADT inválido → dos issues
 post '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"validate_message","arguments":{"kind":"hl7v2","payload":"MSH|^~\\&|HIS|H|EKG|H|20260101||ADT^A01|1|P|2.5\rEVN|A01|20260101\rPID|1||42"}}}' | grep -q 'MISSING_SEGMENT' && echo 'PASS: validate v2' || echo 'FAIL'
@@ -182,7 +199,7 @@ post '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"validate_m
 
 ### Suite automatizada
 
-La cobertura real de comportamiento vive en la suite Vitest (39 tests):
+La cobertura real de comportamiento vive en la suite Vitest (42 tests):
 
 ```bash
 npm test               # todos
