@@ -43,4 +43,6 @@ export const HINTS: Record<string, string> = {
   MISSING_SEGMENT: 'Añade el segmento ausente antes de reenviar el mensaje.',
   MISSING_FIELD: 'Completa el campo requerido; el destino suele rechazar el mensaje sin él.',
   PROFILE_REQUIRED: 'El perfil FHIR exige este elemento (must-support). Ajusta el mapa o el mensaje de origen para poblarlo.',
+  CODING_NO_SYSTEM: 'Añade el system URI del código (ej. http://loinc.org). En HL7 v2 suele venir en el 3.er componente (tabla 0396); si es local, registra su URI en el mapa.',
+  CODING_EMPTY: 'El Coding no tiene code; revisa el componente de origen en el mensaje v2.',
 };

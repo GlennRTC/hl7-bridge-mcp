@@ -42,6 +42,18 @@ test('validación FHIR: Observation sin category incumple US Core', () => {
   expect(codesAt(validateFhir(bundle))).toEqual(['PROFILE_REQUIRED@Observation.category']);
 });
 
+test('validación FHIR: Coding sin system → warning; sin code → error; con system → nada', () => {
+  const obs = (coding: fhir4.Coding): fhir4.Bundle => ({
+    resourceType: 'Bundle',
+    type: 'collection',
+    entry: [{ resource: { resourceType: 'Observation', status: 'final', subject: { reference: 'urn:x' }, category: [{ coding: [{ system: 'x', code: 'laboratory' }] }], code: { coding: [coding] } } as fhir4.Observation }],
+  });
+  const only = (b: fhir4.Bundle) => validateFhir(b).filter((i) => i.location === 'Observation.code.coding[0]');
+  expect(only(obs({ code: '1554-5' }))).toEqual([expect.objectContaining({ severity: 'warning', code: 'CODING_NO_SYSTEM' })]);
+  expect(only(obs({ display: 'x' }))).toEqual([expect.objectContaining({ severity: 'error', code: 'CODING_EMPTY' })]);
+  expect(only(obs({ code: '1554-5', system: 'http://loinc.org' }))).toEqual([]);
+});
+
 test('validateMessage despacha por kind y rechaza payload incorrecto', () => {
   expect(validateMessage(fixture('adt_a01.hl7'), 'hl7v2')).toEqual([]);
   expect(() => validateMessage('no es un bundle', 'fhir')).toThrowError(

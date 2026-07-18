@@ -56,6 +56,34 @@ export function validateFhir(bundle: fhir4.Bundle): Issue[] {
         issues.push({ severity: 'error', code: 'PROFILE_REQUIRED', location: `${resource.resourceType}.${rule.path}`, message: rule.message });
       }
     }
+    issues.push(...codingIssues(resource, resource.resourceType));
+  }
+  return issues;
+}
+
+/**
+ * Recorre los arrays `coding` del recurso. Un Coding con `code` pero sin `system`
+ * es ambiguo entre sistemas de codificación → warning; sin `code` no aporta nada → error.
+ * Severidad conservadora (no bloquea): un perfil que exija el binding lo escala aparte.
+ */
+function codingIssues(node: unknown, path: string): Issue[] {
+  const issues: Issue[] = [];
+  if (Array.isArray(node)) {
+    node.forEach((v, i) => issues.push(...codingIssues(v, `${path}[${i}]`)));
+  } else if (node && typeof node === 'object') {
+    for (const [key, value] of Object.entries(node)) {
+      if (key === 'coding' && Array.isArray(value)) {
+        value.forEach((c: { system?: string; code?: string }, i) => {
+          const location = `${path}.coding[${i}]`;
+          if (!c.code) {
+            issues.push({ severity: 'error', code: 'CODING_EMPTY', location, message: 'Un Coding sin code no identifica ningún concepto.' });
+          } else if (!c.system) {
+            issues.push({ severity: 'warning', code: 'CODING_NO_SYSTEM', location, message: `Coding con code "${c.code}" pero sin system: el código es ambiguo entre sistemas de codificación.` });
+          }
+        });
+      }
+      issues.push(...codingIssues(value, `${path}.${key}`));
+    }
   }
   return issues;
 }
