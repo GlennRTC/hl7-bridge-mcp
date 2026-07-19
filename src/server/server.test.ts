@@ -32,7 +32,7 @@ test('e2e: ORU^R01 crudo → map_v2_to_fhir → Bundle validado; validador seña
     bundle: fhir4.Bundle;
     validation: { issues: { code: string; location: string }[]; explained: { humanMessage: string; hint: string }[] };
   };
-  expect(out.bundle.entry!.map((e) => e.resource!.resourceType)).toEqual(['Patient', 'Observation']);
+  expect(out.bundle.entry!.map((e) => e.resource!.resourceType)).toEqual(['Patient', 'Observation', 'DiagnosticReport']);
   // La Observation satisface US Core (category=laboratory, code.coding, value[x], subject).
   const obs = out.bundle.entry!.find((e) => e.resource!.resourceType === 'Observation')!.resource as fhir4.Observation;
   expect(obs.category![0]!.coding![0]!.code).toBe('laboratory');

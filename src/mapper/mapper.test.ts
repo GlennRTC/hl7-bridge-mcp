@@ -81,6 +81,54 @@ test('obx_value_by_obx2: CE/CWE puebla system desde OBX-5.3 (tabla 0396)', () =>
   });
 });
 
+test('obx_value_by_obx2: CWE con coding alternativo (CWE.4/5/6) → coding[1]', () => {
+  const msg = parseHl7v2('MSH|^~\\&|A|B|||20260101||ORU^R01|1|P|2.5\rOBX|1|CWE|664-3^COLOR^LN||Y^Yellow^LN^371244009^Yellow color^SCT||||||F');
+  const obx = msg.segments[1]!;
+  expect(transforms['obx_value_by_obx2']!('Y^Yellow^LN^371244009^Yellow color^SCT', { segment: obx, message: msg })).toEqual({
+    valueCodeableConcept: {
+      coding: [
+        { code: 'Y', display: 'Yellow', system: 'http://loinc.org' },
+        { code: '371244009', display: 'Yellow color', system: 'http://snomed.info/sct' },
+      ],
+    },
+  });
+});
+
+test('hl7_order_status: 0119 conocido, unmatched y desconocido', () => {
+  const os = transforms['hl7_order_status']!;
+  expect(os('NW', { message: {} as never })).toBe('active');
+  expect(os('DC', { message: {} as never })).toBe('revoked');
+  expect(os('ZZ', { message: {} as never })).toBe('unknown');
+});
+
+test('hl7_patient_class: E/I/O/P→ActCode, R/B/C/N/U→v2-0004, fuera de tabla→undefined', () => {
+  const pc = transforms['hl7_patient_class']!;
+  expect(pc('I', { message: {} as never })).toEqual({ system: 'http://terminology.hl7.org/CodeSystem/v3-ActCode', code: 'IMP' });
+  expect(pc('R', { message: {} as never })).toEqual({ system: 'http://terminology.hl7.org/CodeSystem/v2-0004', code: 'R' });
+  expect(pc('ZZ', { message: {} as never })).toBeUndefined();
+});
+
+test('hl7_report_status: 0123 conocido y unmatched', () => {
+  const rs = transforms['hl7_report_status']!;
+  expect(rs('F', { message: {} as never })).toBe('final');
+  expect(rs('R', { message: {} as never })).toBe('partial');
+  expect(rs('A', { message: {} as never })).toBe('unknown');
+});
+
+test('refAll con más de un OBR → MAP_INVALID (agrupación OBR→OBX no soportada)', () => {
+  const raw = [
+    'MSH|^~\\&|LAB|H|EMR|H|20260101||ORU^R01|1|P|2.5',
+    'PID|1||42||PEREZ^ANA||19900215|F',
+    'OBR|1|A||1554-5^GLUCOSE^LN|||20260101||||||||||||||||||F',
+    'OBX|1|NM|1554-5^GLUCOSE^LN||95|mg/dL|||||F',
+    'OBR|2|B||2345-7^GLUCOSE2^LN|||20260101||||||||||||||||||F',
+    'OBX|2|NM|2345-7^GLUCOSE2^LN||99|mg/dL|||||F',
+  ].join('\r');
+  expect(() => mapV2ToFhir(raw, { maps })).toThrowError(
+    expect.objectContaining({ code: 'MAP_INVALID' }),
+  );
+});
+
 test('obx_value_by_obx2: tipo no soportado → MAP_TRANSFORM', () => {
   const msg = parseHl7v2('MSH|^~\\&|A|B|||20260101||ORU^R01|1|P|2.5\rOBX|1|XX|C^D||valor||||||F');
   const obx = msg.segments[1]!;

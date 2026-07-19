@@ -84,12 +84,18 @@ curl -s -X POST localhost:3999/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"map_v2_to_fhir","arguments":{"message":"MSH|^~\\&|LAB|H|EMR|H|20260102080000||ORU^R01|MSG1|P|2.5\rPID|1||123456^^^H^MR||DOE^JOHN||19800101|M\rOBR|1|845439|1045813|1554-5^GLUCOSE^LN|||20260102073000\rOBX|1|NM|1554-5^GLUCOSE^LN||95|mg/dL|70-105|N|||F|||20260102074500"}}}' | extract
 ```
 
-Resultado esperado — un `Bundle` con `Patient` (identifier 123456, name DOE JOHN, gender male,
-birthDate 1980-01-01) y `Observation` (status final, `category` laboratory, code 1554-5/GLUCOSE
-con `system` `http://loinc.org`, valueQuantity 95 mg/dL, effectiveDateTime 2026-01-02T07:45:00,
-subject → Patient). La validación sale **limpia**: `"validation": { "issues": [], "explained": [] }`.
-`category=laboratory` es una constante deliberada (HL7 v2 no la porta; un ORU es siempre
-laboratorio) y el `system` LOINC se deriva de OBX-3.3 = `LN` (tabla 0396).
+Resultado esperado — un `Bundle` con tres recursos:
+- `Patient` (identifier 123456, name DOE JOHN, gender male, birthDate 1980-01-01).
+- `Observation` (status final, `category` laboratory, code 1554-5/GLUCOSE con `system`
+  `http://loinc.org`, valueQuantity 95 mg/dL, effectiveDateTime 2026-01-02T07:45:00, subject → Patient).
+- `DiagnosticReport` (uno por OBR): `category` LAB (sistema `v2-0074`, distinto del de Observation),
+  code 1554-5/GLUCOSE con `system` LOINC (OBR-4.3 = `LN`), `result[]` → la Observation del grupo,
+  subject → Patient. `status` sale de OBR-25 (tabla 0123) si viene; en este mensaje OBR-25 está
+  vacío, así que se omite (no se adivina).
+
+La validación sale **limpia**: `"validation": { "issues": [], "explained": [] }`. `category=laboratory`
+en la Observation es una constante deliberada (HL7 v2 no la porta; un ORU es siempre laboratorio) y
+el `system` LOINC se deriva de OBX-3.3 = `LN` (tabla 0396).
 
 **Deuda de mapeo — `CODING_NO_SYSTEM`.** Cuando un valor codificado (OBX tipo CE/CWE) trae un
 sistema de codificación **no registrado** (ej. `99LOCAL`), el `system` no se adivina: el
@@ -171,12 +177,14 @@ Mensajes sintéticos y qué debe producir cada uno. Los `.hl7` de referencia est
 | 3 | `orm_o01.hl7` (válido) | `validate_message` (hl7v2) | `issues: []` |
 | 4 | `invalid_adt_missing_name.hl7` | `validate_message` (hl7v2) | `MISSING_SEGMENT@PV1`, `MISSING_FIELD@PID-5` |
 | 5 | `invalid_oru_missing_obr_code.hl7` | `validate_message` (hl7v2) | `MISSING_SEGMENT@OBR`, `MISSING_FIELD@OBX-3` |
-| 6 | `oru_r01.hl7` | `map_v2_to_fhir` | Bundle Patient+Observation (category laboratory, code con system LOINC); `issues: []` |
-| 7 | `orm_o01.hl7` | `map_v2_to_fhir` | Bundle Patient+ServiceRequest (status active, intent order, code 1554-5) |
+| 6 | `oru_r01.hl7` | `map_v2_to_fhir` | Bundle Patient+Observation+DiagnosticReport (category laboratory/LAB, code con system LOINC, report `status` final de OBR-25, `result[]`→Observation); `issues: []` |
+| 7 | `orm_o01.hl7` | `map_v2_to_fhir` | Bundle Patient+ServiceRequest (`status` active desde ORC-1=NW vía tabla 0119, intent order, code 1554-5) |
 | 8 | Mensaje sin MSH | `parse_hl7v2` | `isError` con `INVALID_HEADER@MSH` |
 | 9 | Tipo `SIU^S12` (sin mapa) | `map_v2_to_fhir` | `isError` con `MAP_NOT_FOUND@MSH-9` |
 | 10 | Separadores `:-+?*` no estándar | `parse_hl7v2` | `ast.encoding.field=":"`, resto según MSH-2 |
 | 11 | OBX `CE` con `Y^YELLOW^99LOCAL` | `map_v2_to_fhir` | `valueCodeableConcept.coding` sin `system`; warning `CODING_NO_SYSTEM` |
+| 12 | `adt_a01.hl7` (PID-3 con MR + SS, PV1-2=`I`) | `map_v2_to_fhir` | Patient con **dos** identifier (`123456`/GENERAL_HOSPITAL y `999-99-9999`/USA); Encounter.class `IMP` (system `v3-ActCode`) |
+| 13 | OBX `CWE` con coding alternativo (`…^LN^371244009^…^SCT`) | `map_v2_to_fhir` | `valueCodeableConcept.coding[0]` LOINC + `coding[1]` SNOMED (CWE.4/5/6) |
 
 Casos límite cubiertos por los fixtures: repeticiones de campo (`~`, dos identificadores en
 PID-3), subcomponentes (`&`), secuencias de escape (`\T\` → `&`), y finales de línea `\r`,
@@ -199,7 +207,7 @@ post '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"validate_m
 
 ### Suite automatizada
 
-La cobertura real de comportamiento vive en la suite Vitest (42 tests):
+La cobertura real de comportamiento vive en la suite Vitest (47 tests):
 
 ```bash
 npm test               # todos

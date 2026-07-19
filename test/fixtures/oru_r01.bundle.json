@@ -32,6 +32,19 @@
         "effectiveDateTime": "2026-01-02T07:45:00",
         "subject": { "reference": "urn:uuid:00000000-0000-4000-8000-000000000001" }
       }
+    },
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000003",
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "category": [
+          { "coding": [{ "system": "http://terminology.hl7.org/CodeSystem/v2-0074", "code": "LAB" }] }
+        ],
+        "status": "final",
+        "code": { "coding": [{ "code": "1554-5", "display": "GLUCOSE", "system": "http://loinc.org" }] },
+        "result": [{ "reference": "urn:uuid:00000000-0000-4000-8000-000000000002" }],
+        "subject": { "reference": "urn:uuid:00000000-0000-4000-8000-000000000001" }
+      }
     }
   ]
 }
