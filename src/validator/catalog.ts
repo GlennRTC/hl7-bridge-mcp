@@ -22,20 +22,23 @@ export const V2_REQUIREMENTS: Record<string, { segments: string[]; fields: strin
 };
 
 /**
- * Elementos must-support de cardinalidad mínima 1 (subconjunto US Core).
- * Solo los obligatorios: un elemento ausente aquí es error de perfil, no aviso.
+ * Invariantes US Core (subconjunto) como expresiones FHIRPath evaluadas contra el
+ * modelo R4: value[x] resuelve valueQuantity/valueString y .where() comprueba
+ * slices reales, no solo presencia de un elemento. `expr` es la condición que
+ * debe cumplirse; `location` señala el elemento para el issue. Incumplir = error.
  */
-export const FHIR_PROFILE: Record<string, { path: string; message: string }[]> = {
+export const FHIR_PROFILE: Record<string, { expr: string; location: string; message: string }[]> = {
   Patient: [
-    { path: 'identifier', message: 'US Core Patient requiere al menos un identifier.' },
-    { path: 'name', message: 'US Core Patient requiere al menos un name.' },
-    { path: 'gender', message: 'US Core Patient requiere gender.' },
+    { expr: 'identifier.where(system.exists() and value.exists()).exists()', location: 'identifier', message: 'US Core Patient requiere un identifier con system y value.' },
+    { expr: 'name.where(family.exists() or given.exists()).exists()', location: 'name', message: 'US Core Patient requiere un name con family o given.' },
+    { expr: 'gender.exists()', location: 'gender', message: 'US Core Patient requiere gender.' },
   ],
   Observation: [
-    { path: 'status', message: 'US Core Observation requiere status.' },
-    { path: 'category', message: 'US Core Observation requiere category.' },
-    { path: 'code', message: 'US Core Observation requiere code.' },
-    { path: 'subject', message: 'US Core Observation requiere subject.' },
+    { expr: 'status.exists()', location: 'status', message: 'US Core Observation requiere status.' },
+    { expr: "category.coding.where(code='laboratory').exists()", location: 'category', message: 'US Core Observation (lab) requiere category con code laboratory.' },
+    { expr: 'code.coding.exists()', location: 'code', message: 'US Core Observation requiere code.coding.' },
+    { expr: 'subject.reference.exists()', location: 'subject', message: 'US Core Observation requiere subject.' },
+    { expr: 'value.exists() or dataAbsentReason.exists()', location: 'value[x]', message: 'US Core Observation requiere value[x] o dataAbsentReason.' },
   ],
 };
 

@@ -6,6 +6,9 @@ resources:
     from: PID
     map:
       - { from: "PID-3[1].1", to: "identifier[0].value" }
+      # ponytail: PID-3.4 (namespace ID) → identifier.system tal cual (v2-to-FHIR IG).
+      # OID en 3.4.2 (tipo ISO) necesitaría urn:oid vía transform; añadirlo cuando aparezca.
+      - { from: "PID-3[1].4", to: "identifier[0].system" }
       - { from: PID-5.1, to: "name[0].family" }
       - { from: PID-5.2, to: "name[0].given[0]" }
       - { from: PID-7, to: birthDate, transform: hl7_datetime }

@@ -44,8 +44,7 @@ export function loadMap(filePath: string): Hl7FhirMap {
 
 const DEFAULT_MAPS_DIR = new URL('../../maps/', import.meta.url);
 
-export function loadMaps(dir: URL | string = DEFAULT_MAPS_DIR): Hl7FhirMap[] {
-  const base = dir instanceof URL ? dir : new URL(`${dir.replace(/\/?$/, '/')}`, `file://${process.cwd()}/`);
+export function loadMaps(base: URL = DEFAULT_MAPS_DIR): Hl7FhirMap[] {
   return readdirSync(base)
     .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'))
     .map((f) => loadMap(new URL(f, base).pathname));

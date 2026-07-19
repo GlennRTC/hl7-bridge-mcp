@@ -1,8 +1,8 @@
 import { Hl7BridgeError } from '../errors/index.js';
 import type { Encoding, Field, Hl7Message, Segment } from './types.js';
 
-export type { Component, Encoding, Field, FieldRepetition, Hl7Message, Segment } from './types.js';
-export { HL7_TABLES, resolveTable } from './tables.js';
+export type { Hl7Message } from './types.js';
+export { resolveTable } from './tables.js';
 
 const SEGMENT_NAME = /^[A-Z][A-Z0-9]{2}$/;
 

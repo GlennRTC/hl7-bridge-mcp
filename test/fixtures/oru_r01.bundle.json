@@ -6,7 +6,7 @@
       "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000001",
       "resource": {
         "resourceType": "Patient",
-        "identifier": [{ "value": "123456" }],
+        "identifier": [{ "value": "123456", "system": "GENERAL_HOSPITAL" }],
         "name": [{ "family": "DOE", "given": ["JOHN"] }],
         "birthDate": "1980-01-01",
         "gender": "male"

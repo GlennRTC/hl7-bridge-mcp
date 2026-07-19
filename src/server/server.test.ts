@@ -24,18 +24,19 @@ test('el servidor expone las 4 tools del MVP', async () => {
   expect(names).toEqual(['explain_error', 'map_v2_to_fhir', 'parse_hl7v2', 'validate_message']);
 });
 
-test('e2e: ORU^R01 crudo → map_v2_to_fhir → Bundle validado sin deuda de mapeo', async () => {
+test('e2e: ORU^R01 crudo → map_v2_to_fhir → Bundle validado; validador señala deuda real', async () => {
   const client = await connectClient();
   const res = (await client.callTool({ name: 'map_v2_to_fhir', arguments: { message: fixture('oru_r01.hl7') } })) as CallToolResult;
   expect(res.isError).toBeFalsy();
   const out = JSON.parse(payload(res).text) as {
     bundle: fhir4.Bundle;
-    validation: { issues: { location: string }[]; explained: { humanMessage: string; hint: string }[] };
+    validation: { issues: { code: string; location: string }[]; explained: { humanMessage: string; hint: string }[] };
   };
   expect(out.bundle.entry!.map((e) => e.resource!.resourceType)).toEqual(['Patient', 'Observation']);
-  // ORU^R01 puebla category=laboratory (constante deliberada), por lo que satisface US Core.
+  // La Observation satisface US Core (category=laboratory, code.coding, value[x], subject).
   const obs = out.bundle.entry!.find((e) => e.resource!.resourceType === 'Observation')!.resource as fhir4.Observation;
   expect(obs.category![0]!.coding![0]!.code).toBe('laboratory');
+  // El Patient también satisface US Core: identifier con value (PID-3.1) y system (PID-3.4).
   expect(out.validation.issues).toEqual([]);
 });
 

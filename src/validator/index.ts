@@ -1,4 +1,5 @@
 import fhirpath from 'fhirpath';
+import fhirR4Model from 'fhirpath/fhir-context/r4/index.js';
 import { Hl7BridgeError } from '../errors/index.js';
 import { messageTypeOf, resolveV2Path } from '../mapper/index.js';
 import { parseHl7v2 } from '../parser/index.js';
@@ -7,7 +8,6 @@ import { FHIR_PROFILE, V2_REQUIREMENTS } from './catalog.js';
 
 export type { Explanation } from './explain.js';
 export { explainError } from './explain.js';
-export { FIELD_CATALOG, FHIR_PROFILE, HINTS, V2_REQUIREMENTS } from './catalog.js';
 
 export type Severity = 'error' | 'warning' | 'information';
 
@@ -50,10 +50,11 @@ export function validateFhir(bundle: fhir4.Bundle): Issue[] {
     const rules = FHIR_PROFILE[resource.resourceType];
     if (!rules) continue;
     for (const rule of rules) {
-      // evaluate() sin opción async es síncrono; el tipo union obliga al cast.
-      const present = (fhirpath.evaluate(resource as object, `${rule.path}.exists()`) as unknown[])[0] === true;
+      // evaluate() sin opción async es síncrono; el modelo R4 resuelve value[x] y
+      // los slices de .where(). El tipo union del resultado obliga al cast.
+      const present = (fhirpath.evaluate(resource as object, rule.expr, undefined, fhirR4Model) as unknown[])[0] === true;
       if (!present) {
-        issues.push({ severity: 'error', code: 'PROFILE_REQUIRED', location: `${resource.resourceType}.${rule.path}`, message: rule.message });
+        issues.push({ severity: 'error', code: 'PROFILE_REQUIRED', location: `${resource.resourceType}.${rule.location}`, message: rule.message });
       }
     }
     issues.push(...codingIssues(resource, resource.resourceType));

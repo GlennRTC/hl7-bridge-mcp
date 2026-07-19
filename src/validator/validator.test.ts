@@ -37,7 +37,8 @@ test('validación FHIR: Observation sin category incumple US Core', () => {
   const bundle: fhir4.Bundle = {
     resourceType: 'Bundle',
     type: 'collection',
-    entry: [{ resource: { resourceType: 'Observation', status: 'final', code: {}, subject: { reference: 'urn:x' } } as fhir4.Observation }],
+    // Válido salvo por category: aísla que la única falla de perfil es esa.
+    entry: [{ resource: { resourceType: 'Observation', status: 'final', code: { coding: [{ system: 'http://loinc.org', code: '1554-5' }] }, subject: { reference: 'urn:x' }, valueString: '95' } as fhir4.Observation }],
   };
   expect(codesAt(validateFhir(bundle))).toEqual(['PROFILE_REQUIRED@Observation.category']);
 });

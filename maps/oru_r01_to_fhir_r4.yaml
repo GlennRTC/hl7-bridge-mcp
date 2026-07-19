@@ -6,6 +6,10 @@ resources:
     from: PID
     map:
       - { from: "PID-3[1].1", to: "identifier[0].value" }
+      # ponytail: PID-3.4 (namespace ID) → identifier.system tal cual, como hace el v2-to-FHIR IG
+      # para autoridades sin universal ID. Un feed con OID en 3.4.2 (tipo ISO en 3.4.3) necesitaría
+      # urn:oid vía transform; añadirlo cuando aparezca uno.
+      - { from: "PID-3[1].4", to: "identifier[0].system" }
       - { from: PID-5.1, to: "name[0].family" }
       - { from: PID-5.2, to: "name[0].given[0]" }
       - { from: PID-7, to: birthDate, transform: hl7_datetime }
