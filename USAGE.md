@@ -1,46 +1,53 @@
-# HL7-Bridge MCP — Guía de uso y pruebas
+# HL7-Bridge MCP — Usage and testing guide
 
-Instrucciones para arrancar el servidor, invocar sus 4 tools y un set de mensajes de
-prueba con el resultado esperado. Todos los ejemplos usan datos **sintéticos**.
+Instructions to start the server, invoke its 4 tools, and a set of test messages with the
+expected result. All examples use **synthetic** data.
 
-> ⚠️ No es un dispositivo médico. No validado para decisiones clínicas.
+> ⚠️ Not a medical device. Not validated for clinical decisions.
 
-## 1. Arranque
+> Note: the server's human-readable messages (`message`, `humanMessage`, `hint`) are currently
+> emitted in Spanish. The example outputs below preserve them verbatim so they match what the
+> running server returns.
+
+## 1. Startup
 
 ```bash
 npm ci
 npm run build
 ```
 
-**stdio** (clientes MCP locales, p. ej. Claude Desktop):
+**stdio** (local MCP clients, e.g. Claude Desktop):
 
 ```bash
 npm start
 ```
 
-Config para un cliente MCP por stdio:
+Config for an MCP client over stdio:
 
 ```json
 {
   "mcpServers": {
-    "hl7-bridge": { "command": "node", "args": ["/ruta/al/repo/dist/server/index.js"] }
+    "hl7-bridge": { "command": "node", "args": ["/path/to/repo/dist/server/index.js"] }
   }
 }
 ```
 
-**HTTP** (Streamable HTTP; también es lo que corre en Render):
+Or register it in Claude Code with `claude mcp add hl7-bridge -- node "$(pwd)/dist/server/index.js"`
+(see the README for the HTTP variant).
+
+**HTTP** (Streamable HTTP; this is also what runs on Render):
 
 ```bash
-PORT=3999 npm run start:http     # POST /mcp  ·  health en GET /healthz
+PORT=3999 npm run start:http     # POST /mcp  ·  health at GET /healthz
 ```
 
-## 2. Protocolo (HTTP)
+## 2. Protocol (HTTP)
 
-El transporte es JSON-RPC 2.0 sobre `POST /mcp`. La cabecera `accept` debe incluir
-`application/json` **y** `text/event-stream`; la respuesta llega como un evento SSE
-(`data: {…}`). Métodos MCP estándar: `initialize`, `tools/list`, `tools/call`.
+The transport is JSON-RPC 2.0 over `POST /mcp`. The `accept` header must include
+`application/json` **and** `text/event-stream`; the response arrives as an SSE event
+(`data: {…}`). Standard MCP methods: `initialize`, `tools/list`, `tools/call`.
 
-Listar las tools:
+List the tools:
 
 ```bash
 curl -s -X POST localhost:3999/mcp \
@@ -49,19 +56,19 @@ curl -s -X POST localhost:3999/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
-Devuelve: `parse_hl7v2`, `map_v2_to_fhir`, `validate_message`, `explain_error`.
+Returns: `parse_hl7v2`, `map_v2_to_fhir`, `validate_message`, `explain_error`.
 
-El resultado de cada tool viene en `result.content[0].text` como JSON serializado. Para
-extraerlo en los ejemplos siguientes:
+Each tool's result comes in `result.content[0].text` as serialized JSON. To extract it in the
+examples below:
 
 ```bash
 extract() { sed -n 's/^data: //p' | python3 -c 'import sys,json; print(json.load(sys.stdin)["result"]["content"][0]["text"])'; }
 ```
 
-## 3. Las 4 tools
+## 3. The 4 tools
 
 ### `parse_hl7v2` — `{ message }` → `{ ast }`
-AST tipado con separadores leídos de MSH-1/MSH-2 (no se asume `|^~\&`).
+Typed AST with separators read from MSH-1/MSH-2 (it does not assume `|^~\&`).
 
 ```bash
 curl -s -X POST localhost:3999/mcp \
@@ -69,14 +76,14 @@ curl -s -X POST localhost:3999/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"parse_hl7v2","arguments":{"message":"MSH|^~\\&|LAB|H|EMR|H|20260102080000||ORU^R01|MSG1|P|2.5\rPID|1||123456^^^H^MR||DOE^JOHN||19800101|M"}}}' | extract
 ```
 
-Resultado (recortado): `ast.encoding` = `{ field:"|", component:"^", repetition:"~", escape:"\\", subcomponent:"&" }`
-y `ast.segments` = MSH, PID con sus campos → componentes → subcomponentes.
+Result (trimmed): `ast.encoding` = `{ field:"|", component:"^", repetition:"~", escape:"\\", subcomponent:"&" }`
+and `ast.segments` = MSH, PID with their fields → components → subcomponents.
 
-Un mensaje malformado devuelve `isError:true` con error tipado, p. ej. un mensaje que no
-empieza por MSH → `{ "error": { "code":"INVALID_HEADER", "location":"MSH", "humanMessage":"…" } }`.
+A malformed message returns `isError:true` with a typed error, e.g. a message that does not
+start with MSH → `{ "error": { "code":"INVALID_HEADER", "location":"MSH", "humanMessage":"…" } }`.
 
 ### `map_v2_to_fhir` — `{ message, mapId?, fhirVersion? }` → `{ bundle, validation }`
-Mapea a un Bundle FHIR R4 y **valida** el resultado contra US Core mínimo, explicando cada issue.
+Maps to a FHIR R4 Bundle and **validates** the result against minimal US Core, explaining each issue.
 
 ```bash
 curl -s -X POST localhost:3999/mcp \
@@ -84,23 +91,23 @@ curl -s -X POST localhost:3999/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"map_v2_to_fhir","arguments":{"message":"MSH|^~\\&|LAB|H|EMR|H|20260102080000||ORU^R01|MSG1|P|2.5\rPID|1||123456^^^H^MR||DOE^JOHN||19800101|M\rOBR|1|845439|1045813|1554-5^GLUCOSE^LN|||20260102073000\rOBX|1|NM|1554-5^GLUCOSE^LN||95|mg/dL|70-105|N|||F|||20260102074500"}}}' | extract
 ```
 
-Resultado esperado — un `Bundle` con tres recursos:
+Expected result — a `Bundle` with three resources:
 - `Patient` (identifier 123456, name DOE JOHN, gender male, birthDate 1980-01-01).
-- `Observation` (status final, `category` laboratory, code 1554-5/GLUCOSE con `system`
+- `Observation` (status final, `category` laboratory, code 1554-5/GLUCOSE with `system`
   `http://loinc.org`, valueQuantity 95 mg/dL, effectiveDateTime 2026-01-02T07:45:00, subject → Patient).
-- `DiagnosticReport` (uno por OBR): `category` LAB (sistema `v2-0074`, distinto del de Observation),
-  code 1554-5/GLUCOSE con `system` LOINC (OBR-4.3 = `LN`), `result[]` → la Observation del grupo,
-  subject → Patient. `status` sale de OBR-25 (tabla 0123) si viene; en este mensaje OBR-25 está
-  vacío, así que se omite (no se adivina).
+- `DiagnosticReport` (one per OBR): `category` LAB (system `v2-0074`, distinct from Observation's),
+  code 1554-5/GLUCOSE with `system` LOINC (OBR-4.3 = `LN`), `result[]` → the group's Observation,
+  subject → Patient. `status` comes from OBR-25 (table 0123) if present; in this message OBR-25 is
+  empty, so it is omitted (not guessed).
 
-La validación sale **limpia**: `"validation": { "issues": [], "explained": [] }`. `category=laboratory`
-en la Observation es una constante deliberada (HL7 v2 no la porta; un ORU es siempre laboratorio) y
-el `system` LOINC se deriva de OBX-3.3 = `LN` (tabla 0396).
+Validation comes out **clean**: `"validation": { "issues": [], "explained": [] }`. `category=laboratory`
+on the Observation is a deliberate constant (HL7 v2 does not carry it; an ORU is always laboratory) and
+the LOINC `system` is derived from OBX-3.3 = `LN` (table 0396).
 
-**Deuda de mapeo — `CODING_NO_SYSTEM`.** Cuando un valor codificado (OBX tipo CE/CWE) trae un
-sistema de codificación **no registrado** (ej. `99LOCAL`), el `system` no se adivina: el
-`valueCodeableConcept.coding` sale con `code`+`display` pero sin `system`, y la validación lo
-avisa como warning (no bloquea):
+**Mapping debt — `CODING_NO_SYSTEM`.** When a coded value (OBX type CE/CWE) carries an
+**unregistered** coding system (e.g. `99LOCAL`), the `system` is not guessed: the
+`valueCodeableConcept.coding` comes out with `code`+`display` but no `system`, and validation
+warns about it (non-blocking):
 
 ```bash
 curl -s -X POST localhost:3999/mcp \
@@ -122,14 +129,14 @@ curl -s -X POST localhost:3999/mcp \
 }
 ```
 
-Si el mismo OBX usara `LN` en vez de `99LOCAL`, el `system` saldría `http://loinc.org` y no
-habría warning. Un `Coding` sin `code` es error `CODING_EMPTY` (no solo warning).
+If that same OBX used `LN` instead of `99LOCAL`, the `system` would come out `http://loinc.org` and
+there would be no warning. A `Coding` with no `code` is a `CODING_EMPTY` error (not just a warning).
 
-`fhirVersion:"R6"` devuelve `isError` (`UNSUPPORTED_VERSION`): en v0.1 solo hay R4.
+`fhirVersion:"R6"` returns `isError` (`UNSUPPORTED_VERSION`): in v0.1 there is only R4.
 
 ### `validate_message` — `{ payload, kind, profile? }` → `{ issues }`
-`kind:"hl7v2"` valida segmentos/campos requeridos por tipo de mensaje. `kind:"fhir"` recibe
-un Bundle JSON (como string en `payload`) y valida contra US Core mínimo.
+`kind:"hl7v2"` validates required segments/fields by message type. `kind:"fhir"` receives a JSON
+Bundle (as a string in `payload`) and validates against minimal US Core.
 
 ```bash
 curl -s -X POST localhost:3999/mcp \
@@ -137,7 +144,7 @@ curl -s -X POST localhost:3999/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"validate_message","arguments":{"kind":"hl7v2","payload":"MSH|^~\\&|HIS|H|EKG|H|20260101||ADT^A01|MSG1|P|2.5\rEVN|A01|20260101\rPID|1||123456^^^H^MR"}}}' | extract
 ```
 
-Resultado esperado (ADT^A01 sin PV1 ni nombre):
+Expected result (ADT^A01 with no PV1 and no name):
 
 ```json
 { "issues": [
@@ -147,7 +154,7 @@ Resultado esperado (ADT^A01 sin PV1 ni nombre):
 ```
 
 ### `explain_error` — `{ issue }` → `{ humanMessage, location, hint }`
-Enriquece un issue: nombre legible del campo, significado de tablas HL7 y una pista.
+Enriches an issue: readable field name, meaning of HL7 tables, and a hint.
 
 ```bash
 curl -s -X POST localhost:3999/mcp \
@@ -155,7 +162,7 @@ curl -s -X POST localhost:3999/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"explain_error","arguments":{"issue":{"severity":"information","code":"CODED","location":"OBX-11","message":"OBX-11 tiene el valor '"'"'F'"'"'."}}}}' | extract
 ```
 
-Resultado esperado:
+Expected result:
 
 ```json
 {
@@ -165,52 +172,51 @@ Resultado esperado:
 }
 ```
 
-## 4. Set de pruebas
+## 4. Test set
 
-Mensajes sintéticos y qué debe producir cada uno. Los `.hl7` de referencia están en
+Synthetic messages and what each should produce. The reference `.hl7` files are in
 [`test/fixtures/`](test/fixtures/).
 
-| # | Mensaje | Tool | Resultado esperado |
-|---|---------|------|--------------------|
-| 1 | `adt_a01.hl7` (válido) | `validate_message` (hl7v2) | `issues: []` |
-| 2 | `oru_r01.hl7` (válido) | `validate_message` (hl7v2) | `issues: []` |
-| 3 | `orm_o01.hl7` (válido) | `validate_message` (hl7v2) | `issues: []` |
+| # | Message | Tool | Expected result |
+|---|---------|------|-----------------|
+| 1 | `adt_a01.hl7` (valid) | `validate_message` (hl7v2) | `issues: []` |
+| 2 | `oru_r01.hl7` (valid) | `validate_message` (hl7v2) | `issues: []` |
+| 3 | `orm_o01.hl7` (valid) | `validate_message` (hl7v2) | `issues: []` |
 | 4 | `invalid_adt_missing_name.hl7` | `validate_message` (hl7v2) | `MISSING_SEGMENT@PV1`, `MISSING_FIELD@PID-5` |
 | 5 | `invalid_oru_missing_obr_code.hl7` | `validate_message` (hl7v2) | `MISSING_SEGMENT@OBR`, `MISSING_FIELD@OBX-3` |
-| 6 | `oru_r01.hl7` | `map_v2_to_fhir` | Bundle Patient+Observation+DiagnosticReport (category laboratory/LAB, code con system LOINC, report `status` final de OBR-25, `result[]`→Observation); `issues: []` |
-| 7 | `orm_o01.hl7` | `map_v2_to_fhir` | Bundle Patient+ServiceRequest (`status` active desde ORC-1=NW vía tabla 0119, intent order, code 1554-5) |
-| 8 | Mensaje sin MSH | `parse_hl7v2` | `isError` con `INVALID_HEADER@MSH` |
-| 9 | Tipo `SIU^S12` (sin mapa) | `map_v2_to_fhir` | `isError` con `MAP_NOT_FOUND@MSH-9` |
-| 10 | Separadores `:-+?*` no estándar | `parse_hl7v2` | `ast.encoding.field=":"`, resto según MSH-2 |
-| 11 | OBX `CE` con `Y^YELLOW^99LOCAL` | `map_v2_to_fhir` | `valueCodeableConcept.coding` sin `system`; warning `CODING_NO_SYSTEM` |
-| 12 | `adt_a01.hl7` (PID-3 con MR + SS, PV1-2=`I`) | `map_v2_to_fhir` | Patient con **dos** identifier (`123456`/GENERAL_HOSPITAL y `999-99-9999`/USA); Encounter.class `IMP` (system `v3-ActCode`) |
-| 13 | OBX `CWE` con coding alternativo (`…^LN^371244009^…^SCT`) | `map_v2_to_fhir` | `valueCodeableConcept.coding[0]` LOINC + `coding[1]` SNOMED (CWE.4/5/6) |
+| 6 | `oru_r01.hl7` | `map_v2_to_fhir` | Bundle Patient+Observation+DiagnosticReport (category laboratory/LAB, code with LOINC system, report `status` final from OBR-25, `result[]`→Observation); `issues: []` |
+| 7 | `orm_o01.hl7` | `map_v2_to_fhir` | Bundle Patient+ServiceRequest (`status` active from ORC-1=NW via table 0119, intent order, code 1554-5) |
+| 8 | Message with no MSH | `parse_hl7v2` | `isError` with `INVALID_HEADER@MSH` |
+| 9 | Type `SIU^S12` (no map) | `map_v2_to_fhir` | `isError` with `MAP_NOT_FOUND@MSH-9` |
+| 10 | Non-standard separators `:-+?*` | `parse_hl7v2` | `ast.encoding.field=":"`, rest per MSH-2 |
+| 11 | OBX `CE` with `Y^YELLOW^99LOCAL` | `map_v2_to_fhir` | `valueCodeableConcept.coding` with no `system`; warning `CODING_NO_SYSTEM` |
+| 12 | `adt_a01.hl7` (PID-3 with MR + SS, PV1-2=`I`) | `map_v2_to_fhir` | Patient with **two** identifiers (`123456`/GENERAL_HOSPITAL and `999-99-9999`/USA); Encounter.class `IMP` (system `v3-ActCode`) |
+| 13 | OBX `CWE` with alternate coding (`…^LN^371244009^…^SCT`) | `map_v2_to_fhir` | `valueCodeableConcept.coding[0]` LOINC + `coding[1]` SNOMED (CWE.4/5/6) |
 
-Casos límite cubiertos por los fixtures: repeticiones de campo (`~`, dos identificadores en
-PID-3), subcomponentes (`&`), secuencias de escape (`\T\` → `&`), y finales de línea `\r`,
-`\n`, `\r\n`.
+Edge cases covered by the fixtures: field repetitions (`~`, two identifiers in PID-3),
+subcomponents (`&`), escape sequences (`\T\` → `&`), and line endings `\r`, `\n`, `\r\n`.
 
-### Smoke test end-to-end (HTTP)
+### End-to-end smoke test (HTTP)
 
-Arranca el server (`PORT=3999 npm run start:http`) en otra terminal y ejecuta:
+Start the server (`PORT=3999 npm run start:http`) in another terminal and run:
 
 ```bash
 extract() { sed -n 's/^data: //p' | python3 -c 'import sys,json; print(json.load(sys.stdin)["result"]["content"][0]["text"])'; }
 post() { curl -s -X POST localhost:3999/mcp -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d "$1" | extract; }
 
-# ORU con valor CE de sistema local → warning CODING_NO_SYSTEM
+# ORU with a CE value from a local system → CODING_NO_SYSTEM warning
 post '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"map_v2_to_fhir","arguments":{"message":"MSH|^~\\&|LAB|H|EMR|H|20260102||ORU^R01|1|P|2.5\rPID|1||42||DOE^JOHN||19800101|M\rOBR|1||1|5778-6^COLOR^LN\rOBX|1|CE|5778-6^COLOR^LN||Y^YELLOW^99LOCAL||||||F"}}}' | grep -q 'CODING_NO_SYSTEM' && echo 'PASS: map+validate' || echo 'FAIL'
 
-# ADT inválido → dos issues
+# Invalid ADT → two issues
 post '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"validate_message","arguments":{"kind":"hl7v2","payload":"MSH|^~\\&|HIS|H|EKG|H|20260101||ADT^A01|1|P|2.5\rEVN|A01|20260101\rPID|1||42"}}}' | grep -q 'MISSING_SEGMENT' && echo 'PASS: validate v2' || echo 'FAIL'
 ```
 
-### Suite automatizada
+### Automated suite
 
-La cobertura real de comportamiento vive en la suite Vitest (47 tests):
+The real behavioral coverage lives in the Vitest suite (47 tests):
 
 ```bash
-npm test               # todos
-npm run test:coverage  # con gate ≥70% en parser y mapper
-npx vitest run src/mapper/mapper.test.ts   # un archivo
+npm test               # all
+npm run test:coverage  # with a ≥70% gate on parser and mapper
+npx vitest run src/mapper/mapper.test.ts   # a single file
 ```

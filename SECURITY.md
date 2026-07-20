@@ -1,23 +1,23 @@
 # Security Policy
 
 ## PHI-safe by default
-Este repositorio **nunca** contiene PHI (Protected Health Information) real. Todos
-los fixtures son sintéticos o de dominio público (mensajes de ejemplo de la spec HL7).
+This repository **never** contains real PHI (Protected Health Information). All
+fixtures are synthetic or public domain (example messages from the HL7 spec).
 
-- Los nombres, identificadores y fechas de los fixtures son inventados.
-- Los logs redactan por defecto los segmentos con datos de paciente (`PID`, `NK1`, `GT1`).
-  El cuerpo de un mensaje solo se registra con `DEBUG_HL7` activo, y siempre redactado.
-- Ningún log de nivel `INFO` imprime un mensaje completo.
+- The names, identifiers and dates in the fixtures are made up.
+- Logs redact segments with patient data (`PID`, `NK1`, `GT1`) by default.
+  A message body is only logged with `DEBUG_HL7` enabled, and always redacted.
+- No `INFO`-level log prints a full message.
 
-Si vas a procesar datos reales, no los añadas al repo ni a los logs. El transporte
-HTTP del prototipo **no incluye autenticación** y está pensado solo para datos sintéticos.
+If you are going to process real data, do not add it to the repo or the logs. The prototype's
+HTTP transport **includes no authentication** and is intended for synthetic data only.
 
-## No es un dispositivo médico
-Esta herramienta no está validada para decisiones clínicas. Ver el disclaimer del README.
+## Not a medical device
+This tool is not validated for clinical decisions. See the README disclaimer.
 
-## Reportar una vulnerabilidad
-Reporta de forma privada a **glenn.r.tomassi@gmail.com** con:
-- Descripción y pasos de reproducción.
-- Impacto potencial (incluye si hay riesgo de exposición de PHI).
+## Reporting a vulnerability
+Report privately to **glenn.r.tomassi@gmail.com** with:
+- Description and reproduction steps.
+- Potential impact (include whether there is a risk of PHI exposure).
 
-No abras un issue público para vulnerabilidades. Respuesta esperada en ~72 h.
+Do not open a public issue for vulnerabilities. Expected response within ~72 h.

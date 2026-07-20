@@ -1,93 +1,96 @@
 # HL7-Bridge MCP
 
-**Traduce, valida y explica mensajes clínicos entre HL7 v2.x y FHIR R4 — como una tool para tu agente de IA.**
+**Translate, validate and explain clinical messages between HL7 v2.x and FHIR R4 — as a tool for your AI agent.**
 
 [![CI](https://github.com/GlennRTC/hl7-bridge-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/GlennRTC/hl7-bridge-mcp/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/Model_Context_Protocol-server-black)](https://modelcontextprotocol.io)
 
 ```text
-IN   ORU^R01  ·  HL7 v2, resultado de laboratorio
+IN   ORU^R01  ·  HL7 v2, lab result
      OBX|1|NM|1554-5^GLUCOSE^LN||95|mg/dL|70-105|N|||F
 
 OUT  FHIR R4 Bundle  →  Patient · Observation · DiagnosticReport
-     ✓ cumple US Core
-     ⚠ si PID-8 (sexo) viniera vacío:
-       "US Core Patient requiere gender"   →  Patient.gender
+     ✓ conforms to US Core
+     ⚠ if PID-8 (sex) were empty:
+       "US Core Patient requires gender"   →  Patient.gender
 ```
 
-> ⚠️ **No es un dispositivo médico.** No está validado para decisiones clínicas. Los mapeos
-> requieren validación humana antes de cualquier uso con datos reales. Ver [SECURITY.md](SECURITY.md).
+> ⚠️ **Not a medical device.** Not validated for clinical decisions. Mappings
+> require human validation before any use with real data. See [SECURITY.md](SECURITY.md).
 
-## Qué es
+## What it is
 
-Los sistemas de un hospital hablan dos "idiomas". **HL7 v2** es el viejo y telegráfico con el
-que labs y admisión anuncian "ingresó el paciente Juan Pérez" o "glucosa 95 mg/dL". **FHIR** es
-el moderno en JSON que usan apps, portales y sistemas nuevos.
+A hospital's systems speak two "languages". **HL7 v2** is the old, telegraphic one that labs
+and admissions use to announce "patient Juan Pérez was admitted" or "glucose 95 mg/dL". **FHIR**
+is the modern JSON one used by apps, portals and newer systems.
 
-Este es un **traductor entre ambos que además revisa la traducción** y explica los errores en
-lenguaje humano. No es un CRUD FHIR más: es la *capa de traducción validada* que un agente
-necesita para no hablar directamente con un servidor FHIR crudo. Hace tres cosas:
+This is a **translator between the two that also reviews the translation** and explains errors in
+human language. It's not just another FHIR CRUD: it's the *validated translation layer* an agent
+needs so it doesn't have to talk directly to a raw FHIR server. It does three things:
 
-- **Traduce** HL7 v2 → FHIR (y a la inversa, en fases futuras).
-- **Valida** contra perfiles (US Core): que no falte la categoría de un lab, el nombre del paciente…
-- **Explica** *qué* falló y *dónde* — "falta el segmento PV1 requerido para un ingreso" — sin abrir la spec.
+- **Translates** HL7 v2 → FHIR (and the reverse, in future phases).
+- **Validates** against profiles (US Core): that a lab's category isn't missing, that the patient's name is present…
+- **Explains** *what* failed and *where* — "the required PV1 segment for an admission is missing" — without opening the spec.
 
-El foso no es el protocolo MCP, es el **conocimiento de mapeo**: en vez de reglas escondidas en el
-código, usa **mapas declarativos** ([`maps/`](maps/), YAML legible y versionable) del tipo
-"PID-5 del mensaje → nombre del Patient". Traducción auditable y corregible sin tocar código.
+The moat isn't the MCP protocol, it's the **mapping knowledge**: instead of rules hidden in the
+code, it uses **declarative maps** ([`maps/`](maps/), readable and versionable YAML) of the form
+"message PID-5 → Patient's name". Auditable, correctable translation without touching code.
 
 ## Tools
 
-| Tool | Entrada | Salida |
-|------|---------|--------|
-| `parse_hl7v2` | `{ message }` | `{ ast }` — segmentos → campos → componentes, separadores leídos de MSH-1/2 |
+| Tool | Input | Output |
+|------|-------|--------|
+| `parse_hl7v2` | `{ message }` | `{ ast }` — segments → fields → components, separators read from MSH-1/2 |
 | `map_v2_to_fhir` | `{ message, mapId?, fhirVersion? }` | `{ bundle, validation: { issues, explained } }` |
-| `validate_message` | `{ payload, kind: "hl7v2"\|"fhir", profile? }` | `{ issues }` con `location` (segmento-campo o FHIRPath) |
+| `validate_message` | `{ payload, kind: "hl7v2"\|"fhir", profile? }` | `{ issues }` with `location` (segment-field or FHIRPath) |
 | `explain_error` | `{ issue }` | `{ humanMessage, location, hint }` |
 
-Mapas en v0.1: `ADT^A01`, `ORU^R01`, `ORM^O01` → FHIR R4 (ver [`maps/`](maps/)). Los mapeos no
-obvios están marcados `TODO(mapeo)` y **no se adivinan**.
+Maps in v0.1: `ADT^A01`, `ORU^R01`, `ORM^O01` → FHIR R4 (see [`maps/`](maps/)). Non-obvious
+mappings are marked `TODO(mapeo)` and are **not guessed**.
 
-### Llamada → resultado (una por tool)
+> Note: the server's human-readable messages (`message`, `humanMessage`, `hint`) are currently
+> emitted in Spanish. The examples below are translated for readability.
 
-Cada tool se invoca vía `tools/call` con estos `arguments`. Salida resumida; el curl completo y
-más casos (malformados, límite) en [USAGE.md](USAGE.md).
+### Call → result (one per tool)
+
+Each tool is invoked via `tools/call` with these `arguments`. Output is abbreviated; the full curl and
+more cases (malformed, edge) are in [USAGE.md](USAGE.md).
 
 <details>
-<summary><code>parse_hl7v2</code> — AST tipado, separadores leídos de MSH-1/2</summary>
+<summary><code>parse_hl7v2</code> — typed AST, separators read from MSH-1/2</summary>
 
 ```jsonc
 // arguments
 { "message": "MSH|^~\\&|LAB|H|EMR|H|20260102||ORU^R01|MSG1|P|2.5\rPID|1||123456^^^H^MR||DOE^JOHN||19800101|M" }
-// → resultado
+// → result
 { "ast": {
   "encoding": { "field":"|","component":"^","repetition":"~","escape":"\\","subcomponent":"&" },
-  "segments": [ /* MSH, PID → campos → componentes → subcomponentes */ ]
+  "segments": [ /* MSH, PID → fields → components → subcomponents */ ]
 } }
-// mensaje que no empieza por MSH → isError: { "error": { "code":"INVALID_HEADER", "location":"MSH" } }
+// message not starting with MSH → isError: { "error": { "code":"INVALID_HEADER", "location":"MSH" } }
 ```
 </details>
 
 <details>
-<summary><code>map_v2_to_fhir</code> — Bundle FHIR R4 + validación explicada</summary>
+<summary><code>map_v2_to_fhir</code> — FHIR R4 Bundle + explained validation</summary>
 
 ```jsonc
 // arguments
 { "message": "MSH|...|ORU^R01|...\rPID|...\rOBR|1||1|1554-5^GLUCOSE^LN\rOBX|1|NM|1554-5^GLUCOSE^LN||95|mg/dL|70-105|N|||F" }
-// → resultado
+// → result
 { "bundle": { "resourceType":"Bundle", "entry":[ /* Patient · Observation · DiagnosticReport */ ] },
-  "validation": { "issues": [], "explained": [] } }        // limpio si cumple US Core
+  "validation": { "issues": [], "explained": [] } }        // clean if it conforms to US Core
 ```
 </details>
 
 <details>
-<summary><code>validate_message</code> — issues estructurales (v2) o de perfil (FHIR)</summary>
+<summary><code>validate_message</code> — structural issues (v2) or profile issues (FHIR)</summary>
 
 ```jsonc
-// arguments: un ADT^A01 sin PV1 ni nombre
+// arguments: an ADT^A01 with no PV1 and no name
 { "kind": "hl7v2", "payload": "MSH|...|ADT^A01|...\rEVN|A01|20260101\rPID|1||123456^^^H^MR" }
-// → resultado
+// → result
 { "issues": [
   { "severity":"error", "code":"MISSING_SEGMENT", "location":"PV1",  "message":"Falta el segmento requerido PV1 para ADT^A01." },
   { "severity":"error", "code":"MISSING_FIELD",   "location":"PID-5","message":"Falta el campo requerido PID-5 para ADT^A01." }
@@ -96,21 +99,21 @@ más casos (malformados, límite) en [USAGE.md](USAGE.md).
 </details>
 
 <details>
-<summary><code>explain_error</code> — enriquece un issue con lenguaje humano y tablas HL7</summary>
+<summary><code>explain_error</code> — enriches an issue with human language and HL7 tables</summary>
 
 ```jsonc
 // arguments
 { "issue": { "severity":"information", "code":"CODED", "location":"OBX-11", "message":"OBX-11 tiene el valor 'F'." } }
-// → resultado
+// → result
 { "humanMessage": "OBX-11 tiene el valor 'F'. El valor 'F' significa \"Final\" (tabla HL7 0085).",
-  "location": "OBX-11 (Estado del resultado de la observación)",
+  "location": "OBX-11 (Observation result status)",
   "hint": "Revisa el mensaje de origen contra la especificación del perfil." }
 ```
 </details>
 
-## Pruébalo
+## Try it
 
-Arranca en HTTP y llama a `map_v2_to_fhir` con un resultado de laboratorio:
+Start in HTTP and call `map_v2_to_fhir` with a lab result:
 
 ```bash
 extract() { sed -n 's/^data: //p' | python3 -c 'import sys,json; print(json.load(sys.stdin)["result"]["content"][0]["text"])'; }
@@ -121,14 +124,14 @@ curl -s -X POST localhost:3999/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"map_v2_to_fhir","arguments":{"message":"MSH|^~\\&|LAB|H|EMR|H|20260102||ORU^R01|1|P|2.5\rPID|1||123456^^^H^MR||DOE^JOHN||19800101|M\rOBR|1||1|1554-5^GLUCOSE^LN\rOBX|1|NM|1554-5^GLUCOSE^LN||95|mg/dL|70-105|N|||F"}}}' | extract
 ```
 
-Devuelve un `Bundle` con **Patient · Observation · DiagnosticReport** y validación limpia
-(`"issues": []`). `Observation.category` = `laboratory` (que US Core exige) se puebla como
-**constante deliberada documentada en el mapa** — HL7 v2 no tiene campo que la porte y un
-`ORU^R01` es siempre laboratorio —, no un valor adivinado.
+It returns a `Bundle` with **Patient · Observation · DiagnosticReport** and clean validation
+(`"issues": []`). `Observation.category` = `laboratory` (which US Core requires) is populated as a
+**deliberate constant documented in the map** — HL7 v2 has no field that carries it and an
+`ORU^R01` is always laboratory —, not a guessed value.
 
-**El valor está en lo que avisa.** Con el mismo mensaje pero **sin PID-8 (sexo)**, `gender` sí
-viene de un campo del mensaje, así que su ausencia es deuda real que la validación reporta con
-`location` exacta y explicación humana:
+**The value is in what it warns about.** With the same message but **without PID-8 (sex)**, `gender`
+does come from a message field, so its absence is real debt that validation reports with an exact
+`location` and a human explanation:
 
 ```json
 "issues": [
@@ -141,49 +144,67 @@ viene de un campo del mensaje, así que su ausencia es deuda real que la validac
 ]
 ```
 
-La diferencia con `category` es de origen: `gender` tiene un campo v2 (PID-8) que se dejó vacío;
-`category` es una constante sin campo. El set completo de pruebas de las 4 tools (válidos,
-malformados, casos límite) está en [USAGE.md](USAGE.md).
+The difference with `category` is one of origin: `gender` has a v2 field (PID-8) that was left empty;
+`category` is a constant with no field. The full test set for all 4 tools (valid, malformed, edge
+cases) is in [USAGE.md](USAGE.md).
 
-## Uso
+## Usage
 
 ```bash
-# Desarrollo
+# Development
 npm ci && npm test              # + npm run typecheck / lint / test:coverage
 
-# stdio (clientes MCP locales, p. ej. Claude Desktop)
+# stdio (local MCP clients, e.g. Claude Desktop)
 npm run build && npm start
 
-# HTTP (Streamable HTTP para hosting): POST /mcp, health en /healthz, puerto $PORT
+# HTTP (Streamable HTTP for hosting): POST /mcp, health at /healthz, port $PORT
 npm run build && npm run start:http
 ```
 
-**Deploy en Render (free tier):** el repo incluye [`render.yaml`](render.yaml) como Blueprint.
-El servicio hiberna tras ~15 min (primera petición ~30-60 s) y el endpoint **no tiene
-autenticación** — úsalo solo con datos sintéticos.
+### Local install in Claude Code (`claude mcp add`)
 
-## Principios de diseño
+After `npm ci && npm run build`, register it as a stdio server (use an absolute path to `dist`):
 
-- **PHI-safe by default** — el repo nunca contiene PHI real; los logs redactan PID/NK1/GT1.
-- **Herramientas estrechas** — cada tool tiene entrada/salida tipada, no un "haz lo que quieras".
-- **Determinismo y explicabilidad** — todo error trae estructura + *qué* y *dónde* en lenguaje humano.
-- **Fallar ruidosamente** — un mensaje malformado da error estructurado, nunca un resultado parcial silencioso.
-- **No es un dispositivo médico** — sin decisiones clínicas sin validación humana.
-
-## Stack y estructura
-
-**TypeScript** (Node ≥ 20) estricto, SDK MCP oficial (`@modelcontextprotocol/sdk`), `fhirpath.js`
-+ `@types/fhir`, Vitest. Errores tipados (`Hl7BridgeError` con `code`, `location`, `humanMessage`).
-
-```
-/src/{server,parser,mapper,validator,errors}   # MCP · HL7 v2 · mapeo declarativo · perfiles FHIR · errores
-/maps                                          # mapas declarativos YAML (ADT, ORU, ORM…)
-/test/fixtures                                 # mensajes sintéticos + salidas esperadas
+```bash
+claude mcp add hl7-bridge -- node "$(pwd)/dist/server/index.js"
 ```
 
-Detalle en [`context/ARCHITECTURE.md`](context/ARCHITECTURE.md) (componentes, contratos I/O,
-formato de mapas) y [`context/PRD.md`](context/PRD.md).
+HTTP variant (Streamable HTTP), against an already-running server on `$PORT`:
 
-## Licencia
+```bash
+npm run start:http &                                   # local, or use your Render URL
+claude mcp add hl7-bridge --transport http http://localhost:3999/mcp
+```
 
-Apache-2.0 en el núcleo (parser, mapeador, validador, tools MCP). Ver [LICENSE](LICENSE).
+Verify with `claude mcp list` and, inside Claude Code, with `/mcp`. To remove it:
+`claude mcp remove hl7-bridge`.
+
+**Deploy on Render (free tier):** the repo includes [`render.yaml`](render.yaml) as a Blueprint.
+The service hibernates after ~15 min (first request ~30-60 s) and the endpoint **has no
+authentication** — use it only with synthetic data.
+
+## Design principles
+
+- **PHI-safe by default** — the repo never contains real PHI; logs redact PID/NK1/GT1.
+- **Narrow tools** — each tool has typed input/output, not a "do whatever you want".
+- **Determinism and explainability** — every error carries structure + *what* and *where* in human language.
+- **Fail loudly** — a malformed message yields a structured error, never a silent partial result.
+- **Not a medical device** — no clinical decisions without human validation.
+
+## Stack and structure
+
+**TypeScript** (Node ≥ 20) strict, official MCP SDK (`@modelcontextprotocol/sdk`), `fhirpath.js`
++ `@types/fhir`, Vitest. Typed errors (`Hl7BridgeError` with `code`, `location`, `humanMessage`).
+
+```
+/src/{server,parser,mapper,validator,errors}   # MCP · HL7 v2 · declarative mapping · FHIR profiles · errors
+/maps                                          # declarative YAML maps (ADT, ORU, ORM…)
+/test/fixtures                                 # synthetic messages + expected outputs
+```
+
+Detail in [`context/ARCHITECTURE.md`](context/ARCHITECTURE.md) (components, I/O contracts,
+map format) and [`context/PRD.md`](context/PRD.md).
+
+## License
+
+Apache-2.0 at the core (parser, mapper, validator, MCP tools). See [LICENSE](LICENSE).
