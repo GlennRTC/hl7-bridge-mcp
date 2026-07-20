@@ -1,0 +1,47 @@
+id: oul_r22_to_fhir_r4
+messageType: OUL^R22
+target: fhir/R4
+# TODO(mapeo): esbozo pendiente de validación de Glenn. OUL^R22 (Unsolicited Specimen Oriented
+# Observation) es orientado a espécimen: el núcleo es SPM→Specimen + OBX→Observation, con la
+# Observation referenciando al Specimen. Confirmar antes de tratar como mapa definitivo.
+resources:
+  - type: Patient
+    from: PID
+    map:
+      - { from: "PID-3[1].1", to: "identifier[0].value" }
+      - { from: "PID-3[1].4", to: "identifier[0].system" }
+      - { from: PID-5.1, to: "name[0].family" }
+      - { from: PID-5.2, to: "name[0].given[0]" }
+      - { from: PID-7, to: birthDate, transform: hl7_datetime }
+      - { from: PID-8, to: gender, transform: hl7_sex }
+  - type: Specimen
+    from: SPM
+    map:
+      # SPM-2 (Specimen ID / EIP) → identifier; SPM-2.1 es el placer assigned identifier.
+      # TODO(mapeo): EIP tiene sub-estructura (placer vs filler); aquí solo el componente 1.
+      - { from: SPM-2.1, to: "identifier[0].value" }
+      # SPM-4 (tabla 0487, CWE) → Specimen.type. system solo si el código está registrado.
+      - { from: SPM-4.1, to: "type.coding[0].code" }
+      - { from: SPM-4.2, to: "type.coding[0].display" }
+      - { from: SPM-4.3, to: "type.coding[0].system", transform: hl7_coding_system }
+      - { to: subject, ref: Patient }
+  - type: Observation
+    from: OBX
+    map:
+      # category: constante deliberada (US Core la exige); un OUL^R22 es laboratorio, HL7 v2 no la porta.
+      - { to: "category[0].coding[0].system", value: "http://terminology.hl7.org/CodeSystem/observation-category" }
+      - { to: "category[0].coding[0].code", value: laboratory }
+      - { from: OBX-11, to: status, transform: hl7_result_status }
+      - { from: OBX-3.1, to: "code.coding[0].code" }
+      - { from: OBX-3.2, to: "code.coding[0].display" }
+      - { from: OBX-3.3, to: "code.coding[0].system", transform: hl7_coding_system }
+      - { from: OBX-5, to: ".", transform: obx_value_by_obx2 }
+      - { from: OBX-14, to: effectiveDateTime, transform: hl7_datetime }
+      - { to: subject, ref: Patient }
+      # ponytail: ref apunta al primer Specimen del bundle; correcto con un único SPM por mensaje.
+      # La agrupación real SPM→OBX (múltiples especímenes) es el siguiente escalón, igual que OBR→OBX en ORU.
+      - { to: specimen, ref: Specimen }
+notes: >-
+  OUL^R22 → Patient + Specimen + Observation(es). Esbozo v0.1: un solo SPM por mensaje;
+  DiagnosticReport (desde OBR), SAC (contenedor), TCD e INV (reactivo/QC) pendientes de
+  validación de Glenn. La Observation referencia al Specimen vía Observation.specimen.

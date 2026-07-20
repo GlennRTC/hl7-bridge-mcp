@@ -12,6 +12,7 @@ export const FIELD_CATALOG: Record<string, { name: string; table?: string }> = {
   'OBX-2': { name: 'Tipo de valor de la observación', table: '0125' },
   'OBX-3': { name: 'Identificador de la observación' },
   'OBX-11': { name: 'Estado del resultado de la observación', table: '0085' },
+  'SPM-4': { name: 'Tipo de espécimen', table: '0487' },
 };
 
 /** Segmentos y campos requeridos por tipo de mensaje (subconjunto mínimo v0.1). */
@@ -19,6 +20,10 @@ export const V2_REQUIREMENTS: Record<string, { segments: string[]; fields: strin
   'ADT^A01': { segments: ['MSH', 'EVN', 'PID', 'PV1'], fields: ['MSH-9', 'MSH-10', 'PID-3', 'PID-5', 'PV1-2'] },
   'ORU^R01': { segments: ['MSH', 'PID', 'OBR', 'OBX'], fields: ['MSH-9', 'MSH-10', 'PID-3', 'OBX-2', 'OBX-3', 'OBX-11'] },
   'ORM^O01': { segments: ['MSH', 'PID', 'ORC', 'OBR'], fields: ['MSH-9', 'MSH-10', 'PID-3', 'ORC-1', 'OBR-4'] },
+  // TODO(mapeo): esbozo pendiente de validación de Glenn contra la spec v2.5. OUL^R22 es
+  // orientado a espécimen: SPM y OBX son el núcleo; PID y OBR son opcionales por spec pero se
+  // exigen aquí para poder mapear a Patient. Confirmar antes de tratar como perfil definitivo.
+  'OUL^R22': { segments: ['MSH', 'PID', 'SPM', 'OBX'], fields: ['MSH-9', 'MSH-10', 'PID-3', 'SPM-4', 'OBX-2', 'OBX-3', 'OBX-11'] },
 };
 
 /**
