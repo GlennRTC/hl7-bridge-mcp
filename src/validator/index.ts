@@ -43,10 +43,11 @@ export function validateV2(input: string | Hl7Message): Issue[] {
   return issues;
 }
 
-export function validateFhir(bundle: fhir4.Bundle): Issue[] {
+export function validateFhir(input: fhir4.Bundle | fhir4.FhirResource): Issue[] {
   const issues: Issue[] = [];
-  for (const entry of bundle.entry ?? []) {
-    const resource = entry.resource;
+  // Un Bundle se valida por entradas; un recurso suelto se valida tal cual.
+  const resources = input.resourceType === 'Bundle' ? (input.entry ?? []).map((e) => e.resource) : [input];
+  for (const resource of resources) {
     if (!resource) continue;
     const rules = FHIR_PROFILE[resource.resourceType];
     if (!rules) continue;
@@ -93,7 +94,7 @@ function codingIssues(node: unknown, path: string): Issue[] {
 export type ValidateKind = 'hl7v2' | 'fhir';
 
 /** Entrada de la tool `validate_message`. `payload` es texto crudo (v2) o Bundle JSON (fhir). */
-export function validateMessage(payload: string | Hl7Message | fhir4.Bundle, kind: ValidateKind): Issue[] {
+export function validateMessage(payload: string | Hl7Message | fhir4.Bundle | fhir4.FhirResource, kind: ValidateKind): Issue[] {
   if (kind === 'hl7v2') {
     if (typeof payload !== 'string' && !('segments' in payload)) {
       throw new Hl7BridgeError('VALIDATE_INPUT', 'payload', 'kind "hl7v2" espera un mensaje HL7 v2 (texto o AST).');
