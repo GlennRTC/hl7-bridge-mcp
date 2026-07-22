@@ -111,27 +111,38 @@ more cases (malformed, edge) are in [USAGE.md](USAGE.md).
 ```
 </details>
 
-## Try it
+## Try it (Claude Code)
 
-Start in HTTP and call `map_v2_to_fhir` with a lab result:
+This is an MCP server, so the natural way to use it is from an MCP client. In **Claude Code** you
+register it once with `claude mcp add` and then just ask in plain language — Claude picks the tool
+and fills the arguments for you. No HTTP, no ports, no curl.
+
+**1. Register it as a stdio server.** `tsx` runs the TypeScript source directly — no build step, nothing to go stale:
 
 ```bash
-extract() { sed -n 's/^data: //p' | python3 -c 'import sys,json; print(json.load(sys.stdin)["result"]["content"][0]["text"])'; }
-PORT=3999 npm run start:http &
-
-curl -s -X POST localhost:3999/mcp \
-  -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"map_v2_to_fhir","arguments":{"message":"MSH|^~\\&|LAB|H|EMR|H|20260102||ORU^R01|1|P|2.5\rPID|1||123456^^^H^MR||DOE^JOHN||19800101|M\rOBR|1||1|1554-5^GLUCOSE^LN\rOBX|1|NM|1554-5^GLUCOSE^LN||95|mg/dL|70-105|N|||F"}}}' | extract
+npm ci
+claude mcp add hl7-bridge -- npx tsx "$(pwd)/src/server/index.ts"
 ```
 
-It returns a `Bundle` with **Patient · Observation · DiagnosticReport** and clean validation
+Prefer a compiled binary? `npm run build` then register `node "$(pwd)/dist/server/index.js"` instead — but rebuild after every source change.
+
+**2. Verify** with `claude mcp list`, and inside Claude Code with `/mcp` (you should see the four
+`hl7-bridge` tools). To remove it later: `claude mcp remove hl7-bridge`.
+
+**3. Ask in natural language.** Paste a message and let Claude call `map_v2_to_fhir`:
+
+> Map this HL7 v2 lab result to FHIR and tell me if it conforms to US Core:
+> `MSH|^~\&|LAB|H|EMR|H|20260102||ORU^R01|1|P|2.5` `PID|1||123456^^^H^MR||DOE^JOHN||19800101|M`
+> `OBR|1||1|1554-5^GLUCOSE^LN` `OBX|1|NM|1554-5^GLUCOSE^LN||95|mg/dL|70-105|N|||F`
+
+You get a `Bundle` with **Patient · Observation · DiagnosticReport** and clean validation
 (`"issues": []`). `Observation.category` = `laboratory` (which US Core requires) is populated as a
 **deliberate constant documented in the map** — HL7 v2 has no field that carries it and an
 `ORU^R01` is always laboratory —, not a guessed value.
 
-**The value is in what it warns about.** With the same message but **without PID-8 (sex)**, `gender`
-does come from a message field, so its absence is real debt that validation reports with an exact
-`location` and a human explanation:
+**The value is in what it warns about.** Now **drop the trailing `M` (PID-8, sex)** from that PID
+segment — `...||19800101|M` → `...||19800101|`. Because `gender` *does* come from a message field,
+its absence is real debt, and validation reports it with an exact `location` and a human explanation:
 
 ```json
 "issues": [
@@ -148,40 +159,45 @@ The difference with `category` is one of origin: `gender` has a v2 field (PID-8)
 `category` is a constant with no field. The full test set for all 4 tools (valid, malformed, edge
 cases) is in [USAGE.md](USAGE.md).
 
+> Not using Claude Code? To drive the server over **HTTP** from another system (or raw `curl`), see
+> the HTTP transport, protocol and per-tool calls in **[USAGE.md](USAGE.md)**.
+
+## Why use it vs. letting the agent translate directly
+
+An LLM can approximate HL7 v2 → FHIR on its own. The value here isn't the conversion — it's that the
+conversion is **repeatable, auditable, and refuses to guess**.
+
+| Concern | With this MCP | LLM translating directly |
+|---------|---------------|--------------------------|
+| **Determinism** | Same input → identical output every run (declarative YAML maps) | Non-deterministic; same message can map differently across runs/models |
+| **Won't invent data** | Refuses to guess — unknown coding system → `CODING_NO_SYSTEM` warning, no `system` fabricated; unclear mapping → `TODO(mapeo)` | Hallucinates plausible values (a wrong `system` URI, an invented `gender`) |
+| **Parsing** | Reads separators from MSH-1/2; handles repetitions, subcomponents, escapes, `\r`/`\n`/`\r\n` | Usually assumes `\|^~\&` and mis-parses vendor quirks silently |
+| **Validation** | Checks US Core requirements, returns exact `location` + human reason | "Looks conformant" — nothing actually validated it |
+| **Failure mode** | Fails loudly with a structured error (`MAP_INVALID`, `INVALID_HEADER`) | Fails silently — a partial/wrong Bundle that looks fine |
+| **Auditability** | Mapping rule lives in versioned YAML you can diff and correct | Rule lives in a prompt/weights; you can't inspect *why* it mapped that way |
+
+The `gender` case above is the thesis: it flags **real** debt (empty PID-8) with an exact location,
+and does **not** flag the deliberate `category` constant. An LLM alone would likely invent a gender
+or stay silent.
+
+**Where it doesn't add much:** coverage is narrow today (R4 only; ADT^A01, ORU^R01, ORM^O01, OUL^R22
+partial — outside those you get a clean `MAP_NOT_FOUND`); validation is *minimal* US Core, not the
+full IG; and it's still not a clinical safety net — output requires human validation. For a one-off,
+throwaway translation where repeatability and correctness don't matter, the plain LLM is faster.
+
+**Bottom line:** use it when the output feeds a real system and a wrong-but-plausible Bundle is worse
+than a loud failure. For casual exploration, it may be overhead you don't need.
+
 ## Usage
 
 ```bash
-# Development
 npm ci && npm test              # + npm run typecheck / lint / test:coverage
-
-# stdio (local MCP clients, e.g. Claude Desktop)
-npm run build && npm start
-
-# HTTP (Streamable HTTP for hosting): POST /mcp, health at /healthz, port $PORT
-npm run build && npm run start:http
+npm run build && npm start      # stdio server for local MCP clients (Claude Code, Claude Desktop)
 ```
 
-### Local install in Claude Code (`claude mcp add`)
-
-After `npm ci && npm run build`, register it as a stdio server (use an absolute path to `dist`):
-
-```bash
-claude mcp add hl7-bridge -- node "$(pwd)/dist/server/index.js"
-```
-
-HTTP variant (Streamable HTTP), against an already-running server on `$PORT`:
-
-```bash
-npm run start:http &                                   # local, or use your Render URL
-claude mcp add hl7-bridge --transport http http://localhost:3999/mcp
-```
-
-Verify with `claude mcp list` and, inside Claude Code, with `/mcp`. To remove it:
-`claude mcp remove hl7-bridge`.
-
-**Deploy on Render (free tier):** the repo includes [`render.yaml`](render.yaml) as a Blueprint.
-The service hibernates after ~15 min (first request ~30-60 s) and the endpoint **has no
-authentication** — use it only with synthetic data.
+Full setup, testing and deployment steps are in **[USAGE.md](USAGE.md)**: the **HTTP transport**
+(POST /mcp, for hosting or driving the server from another system), the JSON-RPC protocol, a curl
+call per tool, the complete test set, and Render deployment.
 
 ## Design principles
 
@@ -204,6 +220,16 @@ authentication** — use it only with synthetic data.
 
 Detail in [`context/ARCHITECTURE.md`](context/ARCHITECTURE.md) (components, I/O contracts,
 map format) and [`context/PRD.md`](context/PRD.md).
+
+## References
+
+Mapping and validation decisions are grounded in these authoritative sources, not guessed:
+
+- [HL7 v2.5.1 Chapter 7 — Observation Reporting](https://www.hl7.eu/HL7v2x/v251/std251/ch07.html) — message structures (ORU, OUL) and segment optionality.
+- [HL7 Version 2 to FHIR Implementation Guide](https://build.fhir.org/ig/HL7/v2-to-fhir/) — segment/datatype ConceptMaps, e.g. [SPM → Specimen](https://www.hl7.org/fhir/uv/v2mappings/2024Jan/ConceptMap-segment-spm-to-specimen.html).
+- [HL7/v2-to-fhir repository](https://github.com/HL7/v2-to-fhir) — source `.fsh`/CSV mappings (order-control, patient-class, report-status tables used by transforms).
+- [US Core Implementation Guide](https://www.hl7.org/fhir/us/core/) — Patient/Observation profile invariants.
+- [FHIR R4 specification](https://hl7.org/fhir/R4/) — target resource model.
 
 ## License
 

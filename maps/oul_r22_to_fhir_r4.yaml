@@ -1,9 +1,10 @@
 id: oul_r22_to_fhir_r4
 messageType: OUL^R22
 target: fhir/R4
-# TODO(mapeo): esbozo pendiente de validación de Glenn. OUL^R22 (Unsolicited Specimen Oriented
-# Observation) es orientado a espécimen: el núcleo es SPM→Specimen + OBX→Observation, con la
-# Observation referenciando al Specimen. Confirmar antes de tratar como mapa definitivo.
+# OUL^R22 (Unsolicited Specimen Oriented Observation) → Patient + Specimen + Observation(es).
+# Orientado a espécimen: el núcleo es SPM→Specimen + OBX→Observation, con la Observation
+# referenciando al Specimen. Estructura y campos validados contra spec v2.5.1 + v2-to-FHIR IG
+# + auditoría clínica (2026-07). Alcance v0.1: un solo SPM por mensaje (ver nota abajo).
 resources:
   - type: Patient
     from: PID
@@ -17,10 +18,14 @@ resources:
   - type: Specimen
     from: SPM
     map:
-      # SPM-2 (Specimen ID / EIP) → identifier; SPM-2.1 es el placer assigned identifier.
-      # TODO(mapeo): EIP tiene sub-estructura (placer vs filler); aquí solo el componente 1.
+      # SPM-2 (Specimen ID, EIP): SPM-2.1 = placer assigned ID, SPM-2.2 = filler assigned ID.
+      # Se preservan como identifiers distintos (v2-to-FHIR IG): son IDs de sistemas asignadores
+      # diferentes (p.ej. LIS vs. analizador) para el MISMO espécimen; fusionarlos pierde trazabilidad.
       - { from: SPM-2.1, to: "identifier[0].value" }
-      # SPM-4 (tabla 0487, CWE) → Specimen.type. system solo si el código está registrado.
+      - { from: SPM-2.2, to: "identifier[1].value" }
+      # ponytail: identifier.system (autoridad asignadora, HD en SPM-2.x.2/.3) se omite, no se
+      # fabrica — mismo criterio que CODING_NO_SYSTEM. Extraer el HD es el siguiente escalón si un feed lo trae.
+      # SPM-4 (tabla 0487, CWE) → Specimen.type. R en spec v2.5.1. system solo si el código está registrado.
       - { from: SPM-4.1, to: "type.coding[0].code" }
       - { from: SPM-4.2, to: "type.coding[0].display" }
       - { from: SPM-4.3, to: "type.coding[0].system", transform: hl7_coding_system }
@@ -38,10 +43,11 @@ resources:
       - { from: OBX-5, to: ".", transform: obx_value_by_obx2 }
       - { from: OBX-14, to: effectiveDateTime, transform: hl7_datetime }
       - { to: subject, ref: Patient }
-      # ponytail: ref apunta al primer Specimen del bundle; correcto con un único SPM por mensaje.
-      # La agrupación real SPM→OBX (múltiples especímenes) es el siguiente escalón, igual que OBR→OBX en ORU.
+      # ref al único Specimen del bundle. Con >1 SPM el mapper falla ruidosamente (MAP_INVALID):
+      # "la primera" ataría cada OBX al espécimen equivocado. La agrupación SPM→OBX es el siguiente escalón.
       - { to: specimen, ref: Specimen }
 notes: >-
-  OUL^R22 → Patient + Specimen + Observation(es). Esbozo v0.1: un solo SPM por mensaje;
-  DiagnosticReport (desde OBR), SAC (contenedor), TCD e INV (reactivo/QC) pendientes de
-  validación de Glenn. La Observation referencia al Specimen vía Observation.specimen.
+  OUL^R22 → Patient + Specimen + Observation(es). v0.1: un solo SPM por mensaje (el mapper rechaza
+  >1 hasta implementar la agrupación SPM→OBX). Diferidos: DiagnosticReport (desde OBR, obligatorio
+  por spec pero no consumido), SAC (contenedor), TCD e INV (reactivo/QC), y QC/no-paciente
+  (SPM-11 ≠ P, requiere perfil Observation con subject 0..1). La Observation referencia al Specimen vía Observation.specimen.

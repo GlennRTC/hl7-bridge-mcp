@@ -32,14 +32,24 @@ Config for an MCP client over stdio:
 }
 ```
 
-Or register it in Claude Code with `claude mcp add hl7-bridge -- node "$(pwd)/dist/server/index.js"`
-(see the README for the HTTP variant).
+Or register it in Claude Code with `claude mcp add hl7-bridge -- npx tsx "$(pwd)/src/server/index.ts"`
+(`tsx` runs the source directly, no build to keep in sync; `npm run dev` / `npm run dev:http` do the same locally).
 
 **HTTP** (Streamable HTTP; this is also what runs on Render):
 
 ```bash
 PORT=3999 npm run start:http     # POST /mcp  ·  health at GET /healthz
 ```
+
+To point Claude Code at an already-running HTTP server (local or your Render URL):
+
+```bash
+claude mcp add hl7-bridge --transport http http://localhost:3999/mcp
+```
+
+**Deploy on Render (free tier):** the repo includes [`render.yaml`](render.yaml) as a Blueprint.
+The service hibernates after ~15 min (first request ~30-60 s) and the endpoint **has no
+authentication** — use it only with synthetic data.
 
 ## 2. Protocol (HTTP)
 

@@ -16,7 +16,7 @@ const seqIds = () => {
 const maps = loadMaps();
 
 test('los mapas del repo cumplen el esquema', () => {
-  expect(maps.map((m) => m.id).sort()).toEqual(['adt_a01_to_fhir_r4', 'orm_o01_to_fhir_r4', 'oru_r01_to_fhir_r4']);
+  expect(maps.map((m) => m.id).sort()).toEqual(['adt_a01_to_fhir_r4', 'orm_o01_to_fhir_r4', 'oru_r01_to_fhir_r4', 'oul_r22_to_fhir_r4']);
 });
 
 test.each(['adt_a01', 'oru_r01', 'orm_o01'])('%s.hl7 → bundle esperado', (name) => {
@@ -124,6 +124,21 @@ test('refAll con más de un OBR → MAP_INVALID (agrupación OBR→OBX no soport
     'OBR|2|B||2345-7^GLUCOSE2^LN|||20260101||||||||||||||||||F',
     'OBX|2|NM|2345-7^GLUCOSE2^LN||99|mg/dL|||||F',
   ].join('\r');
+  expect(() => mapV2ToFhir(raw, { maps })).toThrowError(
+    expect.objectContaining({ code: 'MAP_INVALID' }),
+  );
+});
+
+test('OUL^R22 con más de un SPM → MAP_INVALID (ref: Specimen ambiguo, agrupación SPM→OBX no soportada)', () => {
+  const raw = [
+    'MSH|^~\\&|LIS|H|EMR|H|20260101||OUL^R22|1|P|2.5',
+    'PID|1||42||PEREZ^ANA||19900215|F',
+    'SPM|1|S1||119364003^Serum^SCT',
+    'OBX|1|NM|1554-5^GLUCOSE^LN||95|mg/dL|||||F',
+    'SPM|2|S2||122575003^Urine^SCT',
+    'OBX|2|NM|2345-7^PROTEIN^LN||30|mg/dL|||||F',
+  ].join('\r');
+  // Sin el guardián, cada OBX se ataría silenciosamente al primer Specimen (resultado en el espécimen equivocado).
   expect(() => mapV2ToFhir(raw, { maps })).toThrowError(
     expect.objectContaining({ code: 'MAP_INVALID' }),
   );

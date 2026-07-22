@@ -29,7 +29,8 @@ export function validateV2(input: string | Hl7Message): Issue[] {
   const issues: Issue[] = [];
   for (const seg of req.segments) {
     if (!msg.segments.some((s) => s.name === seg)) {
-      issues.push({ severity: 'error', code: 'MISSING_SEGMENT', location: seg, message: `Falta el segmento requerido ${seg} para ${type}.` });
+      const note = req.notes?.[seg];
+      issues.push({ severity: 'error', code: 'MISSING_SEGMENT', location: seg, message: `Falta el segmento requerido ${seg} para ${type}.${note ? ` ${note}` : ''}` });
     }
   }
   for (const field of req.fields) {

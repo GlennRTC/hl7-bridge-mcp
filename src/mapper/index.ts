@@ -149,7 +149,6 @@ export function mapV2ToFhir(input: string | Hl7Message, opts: MapOptions = {}): 
 
   const newId = opts.newId ?? randomUUID;
   const entries: fhir4.BundleEntry[] = [];
-  const firstByType: Record<string, string> = {};
   const allByType: Record<string, string[]> = {};
   const deferredRefs: { resource: Record<string, unknown>; to: string; ref: string; many: boolean; ownerType: string }[] = [];
 
@@ -158,7 +157,6 @@ export function mapV2ToFhir(input: string | Hl7Message, opts: MapOptions = {}): 
     for (const occurrence of occurrences) {
       const resource: Record<string, unknown> = { resourceType: res.type };
       const fullUrl = `urn:uuid:${newId()}`;
-      firstByType[res.type] ??= fullUrl;
       (allByType[res.type] ??= []).push(fullUrl);
       for (const entry of expandRepeatingEntries(res.map, msg, occurrence)) {
         if (entry.ref !== undefined) {
@@ -199,11 +197,18 @@ export function mapV2ToFhir(input: string | Hl7Message, opts: MapOptions = {}): 
       }
       setPath(resource, to, targets.map((t) => ({ reference: t })));
     } else {
-      const target = firstByType[ref];
-      if (target === undefined) {
+      // ponytail: ref singular ata el recurso a la PRIMERA ocurrencia del tipo. Con >1
+      // ocurrencia "la primera" es una suposición silenciosa (p.ej. varios SPM harían que
+      // cada OBX se atara al Specimen equivocado: resultado atribuido al espécimen erróneo).
+      // Falla ruidosamente hasta que exista agrupación SPM→OBX / OBR→OBX; ver TODO(mapeo).
+      const targets = allByType[ref];
+      if (targets === undefined) {
         throw new Hl7BridgeError('MAP_INVALID', map.id, `"ref: ${ref}" apunta a un tipo de recurso que el mapa no genera.`);
       }
-      setPath(resource, to, { reference: target });
+      if (targets.length > 1) {
+        throw new Hl7BridgeError('MAP_INVALID', map.id, `"ref: ${ref}" es ambiguo: el mensaje genera ${targets.length} recursos "${ref}" y no hay agrupación que determine cuál corresponde a este "${ownerType}". Agrupación SPM→OBX / OBR→OBX aún no implementada; ver TODO(mapeo) en el YAML.`);
+      }
+      setPath(resource, to, { reference: targets[0]! });
     }
   }
 
