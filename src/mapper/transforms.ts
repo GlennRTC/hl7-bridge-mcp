@@ -17,6 +17,12 @@ const comp = (seg: Segment | undefined, field: number, component = 1): string =>
 const codingSystemUri = (raw: string): string | undefined =>
   ({ LN: 'http://loinc.org', SCT: 'http://snomed.info/sct' })[raw];
 
+const V3_INTERPRETATION = 'http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation';
+// Tabla 0078 → v3 ObservationInterpretation. Identidad para los códigos comunes
+// (fuente: v2-to-FHIR IG ConceptMap). Fuera del set → system undefined: el Coding
+// queda con code pero sin system y el validador emite CODING_NO_SYSTEM (avisa, no aborta).
+const INTERPRETATION_0078 = new Set(['N', 'A', 'AA', 'H', 'HH', 'L', 'LL', 'U', 'D', 'B', 'W', 'S', 'R', 'I', 'IE', '>', '<']);
+
 /** Coding a partir de un triplete CWE (código, texto, sistema-0396). Código vacío → undefined. */
 const cweCoding = (code: string, text: string, systemCode: string): fhir4.Coding | undefined => {
   if (code === '') return undefined;
@@ -83,6 +89,9 @@ export const transforms: Record<string, Transform> = {
 
   /** Tabla 0396 (OBX-3.3 / OBR-4.3) → system URI de un Coding. */
   hl7_coding_system: (raw) => codingSystemUri(raw),
+
+  /** Tabla 0078 (OBX-8) → system URI de v3 ObservationInterpretation; código fuera de tabla → undefined. */
+  hl7_interpretation_system: (raw) => (INTERPRETATION_0078.has(raw) ? V3_INTERPRETATION : undefined),
 
   /**
    * Tabla 0119 (ORC-1) → ServiceRequest.status.

@@ -30,6 +30,24 @@ test('hl7_coding_system: LN→LOINC, código no registrado no puebla system', ()
   expect(cs('99LOCAL', { message: {} as never })).toBeUndefined();
 });
 
+test('hl7_interpretation_system: 0078 conocido puebla v3, desconocido no', () => {
+  const t = transforms['hl7_interpretation_system']!;
+  expect(t('N', { message: {} as never })).toBe('http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation');
+  expect(t('ZZ', { message: {} as never })).toBeUndefined();
+});
+
+test('OBX-8 repetido (H~A) → un interpretation por bandera', () => {
+  const raw = [
+    'MSH|^~\\&|LAB|H|EMR|H|20260101||ORU^R01|1|P|2.5',
+    'PID|1||42||PEREZ^ANA||19900215|F',
+    'OBX|1|NM|1554-5^GLUCOSE^LN||200|mg/dL|70-105|H~A|||F',
+  ].join('\r');
+  const obs = mapV2ToFhir(raw, { maps, newId: seqIds() }).entry![1]!.resource as fhir4.Observation;
+  expect(obs.interpretation).toHaveLength(2);
+  expect(obs.interpretation!.map((i) => i.coding![0]!.code)).toEqual(['H', 'A']);
+  expect(obs.referenceRange).toEqual([{ text: '70-105' }]);
+});
+
 test('selección explícita por mapId', () => {
   const bundle = mapV2ToFhir(fixture('oru_r01.hl7'), { maps, mapId: 'oru_r01_to_fhir_r4', newId: seqIds() });
   expect(bundle).toEqual(JSON.parse(fixture('oru_r01.bundle.json')));

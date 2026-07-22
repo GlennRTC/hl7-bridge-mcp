@@ -27,6 +27,15 @@ resources:
       # OBX-3.3 (tabla 0396) → system URI; LN→LOINC, SCT→SNOMED. Códigos no registrados no pueblan system.
       - { from: OBX-3.3, to: "code.coding[0].system", transform: hl7_coding_system }
       - { from: OBX-5, to: ".", transform: obx_value_by_obx2 }
+      # OBX-8 (tabla 0078) → interpretation. Code verbatim (identidad con v3 para códigos
+      # comunes); system vía lookup, no registrado → sin system (validador avisa CODING_NO_SYSTEM).
+      # [*] expande cada repetición (~) a su propio interpretation[n].
+      - { from: "OBX-8[*].1", to: "interpretation[*].coding[0].code" }
+      - { from: "OBX-8[*].1", to: "interpretation[*].coding[0].system", transform: hl7_interpretation_system }
+      # OBX-7 (ST libre) → referenceRange.text verbatim (resolveV2Path ya omite vacíos).
+      # TODO(mapeo): parsing estructurado low/high es ambiguo (signos, unidades embebidas,
+      # texto cualitativo); requiere validación de Glenn por vendor antes de escribir un parser.
+      - { from: OBX-7, to: "referenceRange[0].text" }
       - { from: OBX-14, to: effectiveDateTime, transform: hl7_datetime }
       - { to: subject, ref: Patient }
   - type: DiagnosticReport
