@@ -9,6 +9,9 @@ resources:
       # ponytail: PID-3.4 (namespace ID) → identifier.system tal cual, como hace el v2-to-FHIR IG
       # para autoridades sin universal ID. Un feed con OID en 3.4.2 (tipo ISO en 3.4.3) necesitaría
       # urn:oid vía transform; añadirlo cuando aparezca uno.
+      # TODO(mapeo): PID-3.4 se emite como namespace ID literal (ej. "H"), no una system URI
+      # resoluble; US Core exige system+value real. Mapear autoridad local → URI canónica requiere
+      # un registro autoridad→URI por feed; requiere validación de Glenn.
       - { from: "PID-3[1].4", to: "identifier[0].system" }
       - { from: PID-5.1, to: "name[0].family" }
       - { from: PID-5.2, to: "name[0].given[0]" }

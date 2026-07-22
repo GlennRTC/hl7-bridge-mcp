@@ -55,6 +55,15 @@ test('validate_message con Bundle FHIR (kind=fhir)', async () => {
   expect(out.issues.map((i) => i.location).sort()).toEqual(['Patient.gender', 'Patient.identifier', 'Patient.name']);
 });
 
+test('validate_message con JSON malformado → INVALID_JSON tipado, no INTERNAL', async () => {
+  const client = await connectClient();
+  const res = (await client.callTool({ name: 'validate_message', arguments: { payload: '{"resourceType":"Patient"},"x":1}', kind: 'fhir' } })) as CallToolResult;
+  expect(res.isError).toBe(true);
+  const err = (JSON.parse(payload(res).text) as { error: { code: string; location: string } }).error;
+  expect(err.code).toBe('INVALID_JSON');
+  expect(err.location).toBe('payload');
+});
+
 test('redactMessage oculta segmentos con PHI y preserva el resto', () => {
   const redacted = redactMessage(fixture('adt_a01.hl7'));
   expect(redacted).toContain('MSH|^~\\&|HIS');
