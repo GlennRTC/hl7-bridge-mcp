@@ -4,14 +4,41 @@
   "description": "MCP server to parse, map and validate clinical messages between HL7 v2.x and FHIR R4/R6, with human-readable error explanations",
   "type": "module",
   "license": "Apache-2.0",
+  "author": "Glenn Tomassi",
+  "homepage": "https://github.com/GlennRTC/hl7-bridge-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GlennRTC/hl7-bridge-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/GlennRTC/hl7-bridge-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "hl7",
+    "hl7v2",
+    "fhir",
+    "healthcare",
+    "interoperability",
+    "model-context-protocol"
+  ],
   "engines": {
     "node": ">=20"
   },
   "bin": {
     "hl7-bridge-mcp": "dist/server/index.js"
   },
+  "files": [
+    "dist",
+    "maps",
+    "SECURITY.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest run",
