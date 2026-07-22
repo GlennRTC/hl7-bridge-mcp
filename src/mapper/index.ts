@@ -14,8 +14,10 @@ const entrySchema = z.object({
   from: z.string().optional(),
   value: z.unknown().optional(),
   ref: z.string().optional(),
+  refAll: z.string().optional(),
   transform: z.string().optional(),
 });
+type MapEntry = z.infer<typeof entrySchema>;
 const resourceSchema = z.object({
   type: z.string(),
   from: z.string().optional(),
@@ -52,6 +54,11 @@ export function loadMaps(base: URL = DEFAULT_MAPS_DIR): Hl7FhirMap[] {
 
 const V2_PATH = /^([A-Z][A-Z0-9]{2})-(\d+)(?:\[(\d+)\])?(?:\.(\d+)(?:\.(\d+))?)?$/;
 
+/** Ocurrencia de segmento a usar: el ancla si es del mismo tipo, si no la primera del mensaje. */
+function resolveSegment(msg: Hl7Message, segName: string, anchor?: Segment): Segment | undefined {
+  return anchor?.name === segName ? anchor : msg.segments.find((s) => s.name === segName);
+}
+
 /**
  * Resuelve una ruta v2 ("PID-3[1].1") sobre el mensaje. Si `anchor` es una
  * ocurrencia del mismo segmento que la ruta, se usa esa ocurrencia; si no, la
@@ -63,9 +70,36 @@ export function resolveV2Path(msg: Hl7Message, path: string, anchor?: Segment): 
     throw new Hl7BridgeError('MAP_INVALID_PATH', path, 'Ruta v2 inválida; formato esperado: SEG-campo[repetición].componente.subcomponente (ej. "PID-3[1].1").');
   }
   const [, segName, field, rep = '1', comp = '1', sub = '1'] = m;
-  const segment = anchor?.name === segName ? anchor : msg.segments.find((s) => s.name === segName);
+  const segment = resolveSegment(msg, segName!, anchor);
   const value = segment?.fields[Number(field) - 1]?.repetitions[Number(rep) - 1]?.components[Number(comp) - 1]?.subcomponents[Number(sub) - 1];
   return value === '' ? undefined : value;
+}
+
+const REP_WILDCARD_FROM = /^([A-Z][A-Z0-9]{2})-(\d+)\[\*\]/;
+
+/**
+ * Expande entradas con `from` comodín (`PID-3[*].1`) a una entrada concreta por
+ * repetición existente del campo, sustituyendo `[*]` en `from` (1-based) y en `to`
+ * (0-based). Las entradas sin comodín pasan intactas. Un `to` con `[*]` pero sin
+ * `from` comodín cae sin expandir y `setPath` lo rechaza (MAP_INVALID_PATH).
+ */
+function expandRepeatingEntries(entries: MapEntry[], msg: Hl7Message, anchor: Segment | undefined): MapEntry[] {
+  const out: MapEntry[] = [];
+  for (const entry of entries) {
+    const from = entry.from;
+    const m = from !== undefined ? REP_WILDCARD_FROM.exec(from) : null;
+    if (m === null || from === undefined) {
+      out.push(entry);
+      continue;
+    }
+    const [, segName, field] = m;
+    const segment = resolveSegment(msg, segName!, anchor);
+    const count = segment?.fields[Number(field) - 1]?.repetitions.length ?? 0;
+    for (let i = 1; i <= count; i++) {
+      out.push({ ...entry, from: from.replace('[*]', `[${i}]`), to: entry.to.replace('[*]', `[${i - 1}]`) });
+    }
+  }
+  return out;
 }
 
 const FHIR_TOKEN = /^([A-Za-z]\w*)(?:\[(\d+)\])?$/;
@@ -115,18 +149,20 @@ export function mapV2ToFhir(input: string | Hl7Message, opts: MapOptions = {}): 
 
   const newId = opts.newId ?? randomUUID;
   const entries: fhir4.BundleEntry[] = [];
-  const firstByType: Record<string, string> = {};
-  const deferredRefs: { resource: Record<string, unknown>; to: string; ref: string }[] = [];
+  const allByType: Record<string, string[]> = {};
+  const deferredRefs: { resource: Record<string, unknown>; to: string; ref: string; many: boolean; ownerType: string }[] = [];
 
   for (const res of map.resources) {
     const occurrences: (Segment | undefined)[] = res.from !== undefined ? msg.segments.filter((s) => s.name === res.from) : [undefined];
     for (const occurrence of occurrences) {
       const resource: Record<string, unknown> = { resourceType: res.type };
       const fullUrl = `urn:uuid:${newId()}`;
-      firstByType[res.type] ??= fullUrl;
-      for (const entry of res.map) {
+      (allByType[res.type] ??= []).push(fullUrl);
+      for (const entry of expandRepeatingEntries(res.map, msg, occurrence)) {
         if (entry.ref !== undefined) {
-          deferredRefs.push({ resource, to: entry.to, ref: entry.ref });
+          deferredRefs.push({ resource, to: entry.to, ref: entry.ref, many: false, ownerType: res.type });
+        } else if (entry.refAll !== undefined) {
+          deferredRefs.push({ resource, to: entry.to, ref: entry.refAll, many: true, ownerType: res.type });
         } else if (entry.value !== undefined) {
           setPath(resource, entry.to, entry.value);
         } else if (entry.from !== undefined) {
@@ -147,12 +183,33 @@ export function mapV2ToFhir(input: string | Hl7Message, opts: MapOptions = {}): 
     }
   }
 
-  for (const { resource, to, ref } of deferredRefs) {
-    const target = firstByType[ref];
-    if (target === undefined) {
-      throw new Hl7BridgeError('MAP_INVALID', map.id, `"ref: ${ref}" apunta a un tipo de recurso que el mapa no genera.`);
+  for (const { resource, to, ref, many, ownerType } of deferredRefs) {
+    if (many) {
+      // ponytail: refAll referencia TODAS las ocurrencias de un tipo. Correcto solo si el
+      // recurso que lo usa es único; con >1 (p.ej. varios OBR) produciría vínculos cruzados
+      // entre grupos. La agrupación real OBR→OBX es el siguiente escalón; hasta entonces, falla ruidosamente.
+      if ((allByType[ownerType]?.length ?? 0) > 1) {
+        throw new Hl7BridgeError('MAP_INVALID', map.id, `"refAll: ${ref}" en un mapa con más de un "${ownerType}" produciría vínculos cruzados entre grupos (agrupación OBR→OBX aún no implementada). Ver TODO(mapeo) en el YAML.`);
+      }
+      const targets = allByType[ref];
+      if (targets === undefined) {
+        throw new Hl7BridgeError('MAP_INVALID', map.id, `"refAll: ${ref}" apunta a un tipo de recurso que el mapa no genera.`);
+      }
+      setPath(resource, to, targets.map((t) => ({ reference: t })));
+    } else {
+      // ponytail: ref singular ata el recurso a la PRIMERA ocurrencia del tipo. Con >1
+      // ocurrencia "la primera" es una suposición silenciosa (p.ej. varios SPM harían que
+      // cada OBX se atara al Specimen equivocado: resultado atribuido al espécimen erróneo).
+      // Falla ruidosamente hasta que exista agrupación SPM→OBX / OBR→OBX; ver TODO(mapeo).
+      const targets = allByType[ref];
+      if (targets === undefined) {
+        throw new Hl7BridgeError('MAP_INVALID', map.id, `"ref: ${ref}" apunta a un tipo de recurso que el mapa no genera.`);
+      }
+      if (targets.length > 1) {
+        throw new Hl7BridgeError('MAP_INVALID', map.id, `"ref: ${ref}" es ambiguo: el mensaje genera ${targets.length} recursos "${ref}" y no hay agrupación que determine cuál corresponde a este "${ownerType}". Agrupación SPM→OBX / OBR→OBX aún no implementada; ver TODO(mapeo) en el YAML.`);
+      }
+      setPath(resource, to, { reference: targets[0]! });
     }
-    setPath(resource, to, { reference: target });
   }
 
   return { resourceType: 'Bundle', type: 'collection', entry: entries };

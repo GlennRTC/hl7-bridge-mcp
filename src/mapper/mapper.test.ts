@@ -16,7 +16,7 @@ const seqIds = () => {
 const maps = loadMaps();
 
 test('los mapas del repo cumplen el esquema', () => {
-  expect(maps.map((m) => m.id).sort()).toEqual(['adt_a01_to_fhir_r4', 'orm_o01_to_fhir_r4', 'oru_r01_to_fhir_r4']);
+  expect(maps.map((m) => m.id).sort()).toEqual(['adt_a01_to_fhir_r4', 'orm_o01_to_fhir_r4', 'oru_r01_to_fhir_r4', 'oul_r22_to_fhir_r4']);
 });
 
 test.each(['adt_a01', 'oru_r01', 'orm_o01'])('%s.hl7 → bundle esperado', (name) => {
@@ -28,6 +28,24 @@ test('hl7_coding_system: LN→LOINC, código no registrado no puebla system', ()
   const cs = transforms['hl7_coding_system']!;
   expect(cs('LN', { message: {} as never })).toBe('http://loinc.org');
   expect(cs('99LOCAL', { message: {} as never })).toBeUndefined();
+});
+
+test('hl7_interpretation_system: 0078 conocido puebla v3, desconocido no', () => {
+  const t = transforms['hl7_interpretation_system']!;
+  expect(t('N', { message: {} as never })).toBe('http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation');
+  expect(t('ZZ', { message: {} as never })).toBeUndefined();
+});
+
+test('OBX-8 repetido (H~A) → un interpretation por bandera', () => {
+  const raw = [
+    'MSH|^~\\&|LAB|H|EMR|H|20260101||ORU^R01|1|P|2.5',
+    'PID|1||42||PEREZ^ANA||19900215|F',
+    'OBX|1|NM|1554-5^GLUCOSE^LN||200|mg/dL|70-105|H~A|||F',
+  ].join('\r');
+  const obs = mapV2ToFhir(raw, { maps, newId: seqIds() }).entry![1]!.resource as fhir4.Observation;
+  expect(obs.interpretation).toHaveLength(2);
+  expect(obs.interpretation!.map((i) => i.coding![0]!.code)).toEqual(['H', 'A']);
+  expect(obs.referenceRange).toEqual([{ text: '70-105' }]);
 });
 
 test('selección explícita por mapId', () => {
@@ -79,6 +97,69 @@ test('obx_value_by_obx2: CE/CWE puebla system desde OBX-5.3 (tabla 0396)', () =>
   expect(transforms['obx_value_by_obx2']!('Y^Yellow^LN', { segment: obx, message: msg })).toEqual({
     valueCodeableConcept: { coding: [{ code: 'Y', display: 'Yellow', system: 'http://loinc.org' }] },
   });
+});
+
+test('obx_value_by_obx2: CWE con coding alternativo (CWE.4/5/6) → coding[1]', () => {
+  const msg = parseHl7v2('MSH|^~\\&|A|B|||20260101||ORU^R01|1|P|2.5\rOBX|1|CWE|664-3^COLOR^LN||Y^Yellow^LN^371244009^Yellow color^SCT||||||F');
+  const obx = msg.segments[1]!;
+  expect(transforms['obx_value_by_obx2']!('Y^Yellow^LN^371244009^Yellow color^SCT', { segment: obx, message: msg })).toEqual({
+    valueCodeableConcept: {
+      coding: [
+        { code: 'Y', display: 'Yellow', system: 'http://loinc.org' },
+        { code: '371244009', display: 'Yellow color', system: 'http://snomed.info/sct' },
+      ],
+    },
+  });
+});
+
+test('hl7_order_status: 0119 conocido, unmatched y desconocido', () => {
+  const os = transforms['hl7_order_status']!;
+  expect(os('NW', { message: {} as never })).toBe('active');
+  expect(os('DC', { message: {} as never })).toBe('revoked');
+  expect(os('ZZ', { message: {} as never })).toBe('unknown');
+});
+
+test('hl7_patient_class: E/I/O/P→ActCode, R/B/C/N/U→v2-0004, fuera de tabla→undefined', () => {
+  const pc = transforms['hl7_patient_class']!;
+  expect(pc('I', { message: {} as never })).toEqual({ system: 'http://terminology.hl7.org/CodeSystem/v3-ActCode', code: 'IMP' });
+  expect(pc('R', { message: {} as never })).toEqual({ system: 'http://terminology.hl7.org/CodeSystem/v2-0004', code: 'R' });
+  expect(pc('ZZ', { message: {} as never })).toBeUndefined();
+});
+
+test('hl7_report_status: 0123 conocido y unmatched', () => {
+  const rs = transforms['hl7_report_status']!;
+  expect(rs('F', { message: {} as never })).toBe('final');
+  expect(rs('R', { message: {} as never })).toBe('partial');
+  expect(rs('A', { message: {} as never })).toBe('unknown');
+});
+
+test('refAll con más de un OBR → MAP_INVALID (agrupación OBR→OBX no soportada)', () => {
+  const raw = [
+    'MSH|^~\\&|LAB|H|EMR|H|20260101||ORU^R01|1|P|2.5',
+    'PID|1||42||PEREZ^ANA||19900215|F',
+    'OBR|1|A||1554-5^GLUCOSE^LN|||20260101||||||||||||||||||F',
+    'OBX|1|NM|1554-5^GLUCOSE^LN||95|mg/dL|||||F',
+    'OBR|2|B||2345-7^GLUCOSE2^LN|||20260101||||||||||||||||||F',
+    'OBX|2|NM|2345-7^GLUCOSE2^LN||99|mg/dL|||||F',
+  ].join('\r');
+  expect(() => mapV2ToFhir(raw, { maps })).toThrowError(
+    expect.objectContaining({ code: 'MAP_INVALID' }),
+  );
+});
+
+test('OUL^R22 con más de un SPM → MAP_INVALID (ref: Specimen ambiguo, agrupación SPM→OBX no soportada)', () => {
+  const raw = [
+    'MSH|^~\\&|LIS|H|EMR|H|20260101||OUL^R22|1|P|2.5',
+    'PID|1||42||PEREZ^ANA||19900215|F',
+    'SPM|1|S1||119364003^Serum^SCT',
+    'OBX|1|NM|1554-5^GLUCOSE^LN||95|mg/dL|||||F',
+    'SPM|2|S2||122575003^Urine^SCT',
+    'OBX|2|NM|2345-7^PROTEIN^LN||30|mg/dL|||||F',
+  ].join('\r');
+  // Sin el guardián, cada OBX se ataría silenciosamente al primer Specimen (resultado en el espécimen equivocado).
+  expect(() => mapV2ToFhir(raw, { maps })).toThrowError(
+    expect.objectContaining({ code: 'MAP_INVALID' }),
+  );
 });
 
 test('obx_value_by_obx2: tipo no soportado → MAP_TRANSFORM', () => {

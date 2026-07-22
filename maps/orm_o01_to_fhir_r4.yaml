@@ -16,8 +16,9 @@ resources:
   - type: ServiceRequest
     from: ORC
     map:
-      # TODO(mapeo): ServiceRequest.status según ORC-1/ORC-5 (NW→active, CA→revoked...) requiere validación de Glenn.
-      - { to: status, value: active }
+      # ORC-1 (tabla 0119) → status. TODO(mapeo): ORC-5 (tabla 0038) debería tener
+      # precedencia si está poblado, pero el v2-to-FHIR IG no publica ConceptMap 0038; requiere validación de Glenn.
+      - { from: ORC-1, to: status, transform: hl7_order_status }
       - { to: intent, value: order }
       - { from: OBR-4.1, to: "code.coding[0].code" }
       - { from: OBR-4.2, to: "code.coding[0].display" }

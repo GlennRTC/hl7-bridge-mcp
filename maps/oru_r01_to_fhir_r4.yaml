@@ -9,6 +9,9 @@ resources:
       # ponytail: PID-3.4 (namespace ID) → identifier.system tal cual, como hace el v2-to-FHIR IG
       # para autoridades sin universal ID. Un feed con OID en 3.4.2 (tipo ISO en 3.4.3) necesitaría
       # urn:oid vía transform; añadirlo cuando aparezca uno.
+      # TODO(mapeo): PID-3.4 se emite como namespace ID literal (ej. "H"), no una system URI
+      # resoluble; US Core exige system+value real. Mapear autoridad local → URI canónica requiere
+      # un registro autoridad→URI por feed; requiere validación de Glenn.
       - { from: "PID-3[1].4", to: "identifier[0].system" }
       - { from: PID-5.1, to: "name[0].family" }
       - { from: PID-5.2, to: "name[0].given[0]" }
@@ -27,9 +30,32 @@ resources:
       # OBX-3.3 (tabla 0396) → system URI; LN→LOINC, SCT→SNOMED. Códigos no registrados no pueblan system.
       - { from: OBX-3.3, to: "code.coding[0].system", transform: hl7_coding_system }
       - { from: OBX-5, to: ".", transform: obx_value_by_obx2 }
+      # OBX-8 (tabla 0078) → interpretation. Code verbatim (identidad con v3 para códigos
+      # comunes); system vía lookup, no registrado → sin system (validador avisa CODING_NO_SYSTEM).
+      # [*] expande cada repetición (~) a su propio interpretation[n].
+      - { from: "OBX-8[*].1", to: "interpretation[*].coding[0].code" }
+      - { from: "OBX-8[*].1", to: "interpretation[*].coding[0].system", transform: hl7_interpretation_system }
+      # OBX-7 (ST libre) → referenceRange.text verbatim (resolveV2Path ya omite vacíos).
+      # TODO(mapeo): parsing estructurado low/high es ambiguo (signos, unidades embebidas,
+      # texto cualitativo); requiere validación de Glenn por vendor antes de escribir un parser.
+      - { from: OBX-7, to: "referenceRange[0].text" }
       - { from: OBX-14, to: effectiveDateTime, transform: hl7_datetime }
       - { to: subject, ref: Patient }
+  - type: DiagnosticReport
+    from: OBR
+    map:
+      # US Core DiagnosticReport-Lab: category fija LAB en v2-0074 (distinta de Observation.category).
+      - { to: "category[0].coding[0].system", value: "http://terminology.hl7.org/CodeSystem/v2-0074" }
+      - { to: "category[0].coding[0].code", value: LAB }
+      - { from: OBR-25, to: status, transform: hl7_report_status }
+      - { from: OBR-4.1, to: "code.coding[0].code" }
+      - { from: OBR-4.2, to: "code.coding[0].display" }
+      - { from: OBR-4.3, to: "code.coding[0].system", transform: hl7_coding_system }
+      # ponytail: refAll referencia TODAS las Observations del bundle; correcto solo con un
+      # único OBR por mensaje. El motor lanza MAP_INVALID si hay >1 OBR. La agrupación real
+      # OBR→OBX (por orden de segmento) es el siguiente escalón, implementar ante un feed multi-OBR real.
+      - { to: result, refAll: Observation }
+      - { to: subject, ref: Patient }
 notes: >-
-  TODO(mapeo): DiagnosticReport por OBR (status OBR-25, code OBR-4, result[] →
-  Observations del grupo) requiere validación de Glenn; US Core DiagnosticReport
-  exige OBR-4. Sin NTE → Observation.note en v0.1.
+  ORU^R01 → Patient + Observation(es) + DiagnosticReport (uno por OBR). Sin NTE →
+  Observation.note en v0.1; effective/issued del DiagnosticReport (OBR-7/OBR-22) pendientes.

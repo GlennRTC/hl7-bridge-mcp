@@ -18,6 +18,15 @@ function ok(data: unknown): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
 }
 
+/** JSON malformado es error de entrada del usuario, no un fallo interno: error tipado y accionable. */
+function parseFhirPayload(payload: string): unknown {
+  try {
+    return JSON.parse(payload);
+  } catch (e) {
+    throw new Hl7BridgeError('INVALID_JSON', 'payload', `El payload FHIR no es JSON válido: ${(e as Error).message}`);
+  }
+}
+
 function fail(e: unknown): CallToolResult {
   const error =
     e instanceof Hl7BridgeError
@@ -80,7 +89,7 @@ export function createServer(): McpServer {
     },
     ({ payload, kind }) => {
       try {
-        const parsed = kind === 'fhir' ? (JSON.parse(payload) as fhir4.Bundle) : payload;
+        const parsed = kind === 'fhir' ? (parseFhirPayload(payload) as fhir4.Bundle) : payload;
         const issues = validateMessage(parsed, kind);
         logTool('validate_message', `ok (${issues.length} issues)`);
         return ok({ issues });

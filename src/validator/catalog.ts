@@ -12,13 +12,29 @@ export const FIELD_CATALOG: Record<string, { name: string; table?: string }> = {
   'OBX-2': { name: 'Tipo de valor de la observación', table: '0125' },
   'OBX-3': { name: 'Identificador de la observación' },
   'OBX-11': { name: 'Estado del resultado de la observación', table: '0085' },
+  'SPM-4': { name: 'Tipo de espécimen', table: '0487' },
 };
 
 /** Segmentos y campos requeridos por tipo de mensaje (subconjunto mínimo v0.1). */
-export const V2_REQUIREMENTS: Record<string, { segments: string[]; fields: string[] }> = {
+export const V2_REQUIREMENTS: Record<string, { segments: string[]; fields: string[]; notes?: Record<string, string> }> = {
   'ADT^A01': { segments: ['MSH', 'EVN', 'PID', 'PV1'], fields: ['MSH-9', 'MSH-10', 'PID-3', 'PID-5', 'PV1-2'] },
   'ORU^R01': { segments: ['MSH', 'PID', 'OBR', 'OBX'], fields: ['MSH-9', 'MSH-10', 'PID-3', 'OBX-2', 'OBX-3', 'OBX-11'] },
   'ORM^O01': { segments: ['MSH', 'PID', 'ORC', 'OBR'], fields: ['MSH-9', 'MSH-10', 'PID-3', 'ORC-1', 'OBR-4'] },
+  // OUL^R22 (Unsolicited Specimen Oriented Observation). Núcleo por spec v2.5.1: SPM (R, repetible)
+  // → OBR (R) → OBX (R); PID es opcional. Decisiones validadas (spec v2.5.1 + v2-to-FHIR IG +
+  // auditoría clínica), no adivinadas:
+  //  - PID/PID-3 se exigen a propósito: sin Patient, US Core Observation.subject (1..1) no se puede
+  //    poblar; los especímenes de QC/no-paciente (SPM-11 ≠ P) quedan fuera de v0.1 (ver notes.PID).
+  //  - OBR es obligatorio por spec pero NO se exige aquí: el mapa aún no lo consume (DiagnosticReport
+  //    diferido); exigir un segmento que ignoramos rechazaría mensajes traducibles sin motivo accionable.
+  //  - SPM-4 (Specimen Type) es R en la propia spec v2.5.1, no una imposición de perfil FHIR.
+  'OUL^R22': {
+    segments: ['MSH', 'PID', 'SPM', 'OBX'],
+    fields: ['MSH-9', 'MSH-10', 'PID-3', 'SPM-4', 'OBX-2', 'OBX-3', 'OBX-11'],
+    notes: {
+      PID: 'Esta versión solo soporta especímenes asociados a paciente (US Core Observation exige subject 1..1); los especímenes de QC/no-paciente (SPM-11 ≠ P) quedan fuera del alcance de v0.1.',
+    },
+  },
 };
 
 /**

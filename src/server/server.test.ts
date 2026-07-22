@@ -32,7 +32,7 @@ test('e2e: ORU^R01 crudo → map_v2_to_fhir → Bundle validado; validador seña
     bundle: fhir4.Bundle;
     validation: { issues: { code: string; location: string }[]; explained: { humanMessage: string; hint: string }[] };
   };
-  expect(out.bundle.entry!.map((e) => e.resource!.resourceType)).toEqual(['Patient', 'Observation']);
+  expect(out.bundle.entry!.map((e) => e.resource!.resourceType)).toEqual(['Patient', 'Observation', 'DiagnosticReport']);
   // La Observation satisface US Core (category=laboratory, code.coding, value[x], subject).
   const obs = out.bundle.entry!.find((e) => e.resource!.resourceType === 'Observation')!.resource as fhir4.Observation;
   expect(obs.category![0]!.coding![0]!.code).toBe('laboratory');
@@ -53,6 +53,15 @@ test('validate_message con Bundle FHIR (kind=fhir)', async () => {
   const res = (await client.callTool({ name: 'validate_message', arguments: { payload: JSON.stringify(bundle), kind: 'fhir' } })) as CallToolResult;
   const out = JSON.parse(payload(res).text) as { issues: { location: string }[] };
   expect(out.issues.map((i) => i.location).sort()).toEqual(['Patient.gender', 'Patient.identifier', 'Patient.name']);
+});
+
+test('validate_message con JSON malformado → INVALID_JSON tipado, no INTERNAL', async () => {
+  const client = await connectClient();
+  const res = (await client.callTool({ name: 'validate_message', arguments: { payload: '{"resourceType":"Patient"},"x":1}', kind: 'fhir' } })) as CallToolResult;
+  expect(res.isError).toBe(true);
+  const err = (JSON.parse(payload(res).text) as { error: { code: string; location: string } }).error;
+  expect(err.code).toBe('INVALID_JSON');
+  expect(err.location).toBe('payload');
 });
 
 test('redactMessage oculta segmentos con PHI y preserva el resto', () => {

@@ -43,6 +43,15 @@ test('validación FHIR: Observation sin category incumple US Core', () => {
   expect(codesAt(validateFhir(bundle))).toEqual(['PROFILE_REQUIRED@Observation.category']);
 });
 
+test('validación FHIR: recurso suelto (no Bundle) se valida directo', () => {
+  const patient = { resourceType: 'Patient', identifier: [{ value: '123456' }] } as fhir4.Patient;
+  expect(codesAt(validateFhir(patient)).sort()).toEqual([
+    'PROFILE_REQUIRED@Patient.gender',
+    'PROFILE_REQUIRED@Patient.identifier',
+    'PROFILE_REQUIRED@Patient.name',
+  ]);
+});
+
 test('validación FHIR: Coding sin system → warning; sin code → error; con system → nada', () => {
   const obs = (coding: fhir4.Coding): fhir4.Bundle => ({
     resourceType: 'Bundle',
