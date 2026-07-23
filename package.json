@@ -31,7 +31,10 @@
   "files": [
     "dist",
     "maps",
-    "SECURITY.md"
+    "SECURITY.md",
+    "README.md",
+    "USAGE.md",
+    "LICENSE"
   ],
   "publishConfig": {
     "access": "public"
