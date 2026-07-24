@@ -15,8 +15,33 @@ const seqIds = () => {
 
 const maps = loadMaps();
 
-test('los mapas del repo cumplen el esquema', () => {
-  expect(maps.map((m) => m.id).sort()).toEqual(['adt_a01_to_fhir_r4', 'orm_o01_to_fhir_r4', 'oru_r01_to_fhir_r4', 'oul_r22_to_fhir_r4']);
+test('los mapas del repo cumplen el esquema (incluye packs nacionales en subdirectorios)', () => {
+  expect(maps.map((m) => m.id).sort()).toEqual([
+    'adt_a01_to_clcore',
+    'adt_a01_to_cocore',
+    'adt_a01_to_fhir_r4',
+    'orm_o01_to_fhir_r4',
+    'oru_r01_to_clcore',
+    'oru_r01_to_cocore',
+    'oru_r01_to_fhir_r4',
+    'oul_r22_to_fhir_r4',
+  ]);
+});
+
+test('auto-selección por MSH-9 ignora mapas nacionales (profile) y elige el base', () => {
+  // Hay 3 mapas ADT^A01 (base + cl-core + co-core); sin mapId debe salir el base.
+  const bundle = mapV2ToFhir(fixture('adt_a01.hl7'), { maps, newId: seqIds() });
+  expect(bundle).toEqual(JSON.parse(fixture('adt_a01.bundle.json')));
+});
+
+test.each([
+  ['cl/adt_a01_cl', 'adt_a01_to_clcore'],
+  ['cl/oru_r01_cl', 'oru_r01_to_clcore'],
+  ['co/adt_a01_co', 'adt_a01_to_cocore'],
+  ['co/oru_r01_co', 'oru_r01_to_cocore'],
+])('%s.hl7 → bundle nacional esperado (mapId %s)', (name, mapId) => {
+  const bundle = mapV2ToFhir(fixture(`${name}.hl7`), { maps, mapId, newId: seqIds() });
+  expect(bundle).toEqual(JSON.parse(fixture(`${name}.bundle.json`)));
 });
 
 test.each(['adt_a01', 'oru_r01', 'orm_o01'])('%s.hl7 → bundle esperado', (name) => {

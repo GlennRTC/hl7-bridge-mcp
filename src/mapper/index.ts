@@ -27,6 +27,9 @@ export const mapSchema = z.object({
   id: z.string(),
   messageType: z.string(),
   target: z.string(),
+  // Pack de perfil nacional (ej. "cl-core", "co-core"). Presente = mapa nacional: se selecciona
+  // solo por mapId explícito, nunca por auto-match de MSH-9 (evita ambiguar con el mapa base).
+  profile: z.string().optional(),
   resources: z.array(resourceSchema),
   notes: z.string().optional(),
 });
@@ -47,9 +50,16 @@ export function loadMap(filePath: string): Hl7FhirMap {
 const DEFAULT_MAPS_DIR = new URL('../../maps/', import.meta.url);
 
 export function loadMaps(base: URL = DEFAULT_MAPS_DIR): Hl7FhirMap[] {
-  return readdirSync(base)
-    .filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'))
-    .map((f) => loadMap(new URL(f, base).pathname));
+  const out: Hl7FhirMap[] = [];
+  // Recursión: los mapas nacionales viven en subdirectorios (maps/cl, maps/co).
+  for (const e of readdirSync(base, { withFileTypes: true })) {
+    if (e.isDirectory()) {
+      out.push(...loadMaps(new URL(`${e.name}/`, base)));
+    } else if (e.name.endsWith('.yaml') || e.name.endsWith('.yml')) {
+      out.push(loadMap(new URL(e.name, base).pathname));
+    }
+  }
+  return out;
 }
 
 const V2_PATH = /^([A-Z][A-Z0-9]{2})-(\d+)(?:\[(\d+)\])?(?:\.(\d+)(?:\.(\d+))?)?$/;
@@ -232,5 +242,6 @@ export function messageTypeOf(msg: Hl7Message): string {
 
 function findByMessageType(maps: Hl7FhirMap[], msg: Hl7Message): Hl7FhirMap | undefined {
   const type = messageTypeOf(msg);
-  return maps.find((m) => m.messageType === type);
+  // Solo mapas base (sin profile). Los nacionales requieren mapId explícito.
+  return maps.find((m) => m.messageType === type && m.profile === undefined);
 }

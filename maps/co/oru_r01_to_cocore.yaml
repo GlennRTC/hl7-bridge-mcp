@@ -1,0 +1,59 @@
+id: oru_r01_to_cocore
+messageType: ORU^R01
+target: fhir/R4
+profile: co-core
+resources:
+  - type: Patient
+    from: PID
+    map:
+      - { to: "meta.profile[0]", value: "http://co.fhir.guide/core/StructureDefinition/PatientCO" }
+      - { from: "PID-3[1].1", to: "identifier[0].value" }
+      - { from: "PID-3[1].4", to: "identifier[0].system" }
+      # TODO(mapeo): tipo de identificador CO (CC/TI/RC, slices InternationalCode+ColombianCode) —
+      # mismo TODO que adt_a01_to_cocore. Requiere validación de campo.
+      # TODO(mapeo): Patient.active (1..1 MS) sin campo v2 directo (candidato PID-30 invertido, es
+      # inferencia). Requiere validación.
+      - { to: "name[0].use", value: official }
+      - { from: PID-5.1, to: "name[0].family" }
+      - { from: PID-5.2, to: "name[0].given[0]" }
+      # TODO(mapeo): Fathers/MothersFamilyName — sin componente XPN que separe apellido paterno/materno
+      # (ver candidatos evaluados en adt_a01_to_cocore). TODO(mapeo).
+      - { from: PID-7, to: birthDate, transform: hl7_datetime }
+      - { from: PID-8, to: gender, transform: hl7_sex }
+      - { from: PID-11.1, to: "address[0].line[0]" }
+      - { from: PID-11.3, to: "address[0].city" }
+      - { from: PID-11.4, to: "address[0].state" }
+      - { from: PID-11.6, to: "address[0].country" }
+      # TODO(mapeo): códigos DIVIPOLA (municipio/departamento) no derivables del texto libre de PID-11.
+  # CO Core NO perfila Observation ni DiagnosticReport → se reutiliza el mapeo genérico (FHIR base),
+  # idéntico a oru_r01_to_fhir_r4. No hay perfil nacional que validar sobre estos recursos.
+  - type: Observation
+    from: OBX
+    map:
+      - { to: "category[0].coding[0].system", value: "http://terminology.hl7.org/CodeSystem/observation-category" }
+      - { to: "category[0].coding[0].code", value: laboratory }
+      - { from: OBX-11, to: status, transform: hl7_result_status }
+      - { from: OBX-3.1, to: "code.coding[0].code" }
+      - { from: OBX-3.2, to: "code.coding[0].display" }
+      - { from: OBX-3.3, to: "code.coding[0].system", transform: hl7_coding_system }
+      - { from: OBX-5, to: ".", transform: obx_value_by_obx2 }
+      - { from: "OBX-8[*].1", to: "interpretation[*].coding[0].code" }
+      - { from: "OBX-8[*].1", to: "interpretation[*].coding[0].system", transform: hl7_interpretation_system }
+      - { from: OBX-7, to: "referenceRange[0].text" }
+      - { from: OBX-14, to: effectiveDateTime, transform: hl7_datetime }
+      - { to: subject, ref: Patient }
+  - type: DiagnosticReport
+    from: OBR
+    map:
+      - { to: "category[0].coding[0].system", value: "http://terminology.hl7.org/CodeSystem/v2-0074" }
+      - { to: "category[0].coding[0].code", value: LAB }
+      - { from: OBR-25, to: status, transform: hl7_report_status }
+      - { from: OBR-4.1, to: "code.coding[0].code" }
+      - { from: OBR-4.2, to: "code.coding[0].display" }
+      - { from: OBR-4.3, to: "code.coding[0].system", transform: hl7_coding_system }
+      - { to: result, refAll: Observation }
+      - { to: subject, ref: Patient }
+notes: >-
+  ORU^R01 → PatientCO + Observation(es)/DiagnosticReport en FHIR base (CO Core no perfila esos
+  recursos). Patient reutiliza el mapeo genérico con los mismos TODO(mapeo) nacionales. Validación
+  co-core solo aplica reglas a Patient.

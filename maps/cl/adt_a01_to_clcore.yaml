@@ -1,0 +1,60 @@
+id: adt_a01_to_clcore
+messageType: ADT^A01
+target: fhir/R4
+profile: cl-core
+resources:
+  - type: Patient
+    from: PID
+    map:
+      # meta.profile declara conformidad con CorePacienteCl (CL Core v1.8.5).
+      - { to: "meta.profile[0]", value: "https://hl7chile.cl/fhir/ig/clcore/StructureDefinition/CorePacienteCl" }
+
+      # --- Identificador (genérico, valor+system tal cual como en el mapa US Core) ---
+      - { from: "PID-3[1].1", to: "identifier[0].value" }
+      - { from: "PID-3[1].4", to: "identifier[0].system" }
+      # TODO(mapeo): RUN chileno. CorePacienteCl tipa el identifier con
+      # identifier.type.coding (CodeSystem CSTipoIdentificador / CSIdentificadores del propio IG) y
+      # espera el RUN como identificador nacional. Mapear el tipo de identificador v2 (PID-3.5,
+      # tabla 0203) → código de tipo CL y fijar la system URI canónica del RUN requiere el registro
+      # tipo-v2→CL y la URI oficial; NO se adivina. Requiere validación de campo.
+
+      # --- Nombre oficial (genérico; use=official es HumanName estándar, exigido por NombreOficial) ---
+      - { to: "name[0].use", value: official }
+      - { from: PID-5.1, to: "name[0].family" }
+      - { from: PID-5.2, to: "name[0].given[0]" }
+      # TODO(mapeo): SegundoApellido (extension en name.family.extension). El apellido materno chileno
+      # no tiene componente XPN estándar dedicado; candidatos evaluados: PID-5.1 (family, un solo
+      # string) y una 2.ª repetición de PID-5 — ninguno separa 1.er/2.º apellido de forma fiable.
+      # Requiere validación de campo (qué componente/quirk de vendor porta el 2.º apellido).
+
+      # --- Demográficos genéricos (idénticos a US Core) ---
+      - { from: PID-7, to: birthDate, transform: hl7_datetime }
+      - { from: PID-8, to: gender, transform: hl7_sex }
+      # TODO(mapeo): SexoBiologico / IdentidadDeGenero / nacionalidad son extensiones must-support de
+      # CorePacienteCl con value sets nacionales (CSSexoListadoDeis, CSIdentidaddeGenero, CodPais). No
+      # hay campo v2 estándar que las porte sin convención local; requieren validación de campo.
+
+      # --- Dirección y contacto (genérico) ---
+      - { from: PID-11.1, to: "address[0].line[0]" }
+      - { from: PID-11.3, to: "address[0].city" }
+      - { from: PID-11.4, to: "address[0].state" }
+      - { from: PID-11.5, to: "address[0].postalCode" }
+      - { from: PID-11.6, to: "address[0].country" }
+      # TODO(mapeo): ComunasCl/ProvinciasCl/RegionesCl codifican la dirección chilena con CodeSystems
+      # DEIS propios sobre address.extension; el texto libre de PID-11 no aporta esos códigos.
+      - { to: "telecom[0].system", value: phone }
+      - { from: PID-13, to: "telecom[0].value" }
+  - type: Encounter
+    from: PV1
+    map:
+      - { to: status, value: in-progress }
+      - { from: PV1-2, to: class, transform: hl7_patient_class }
+      - { to: subject, ref: Patient }
+      # TODO(mapeo): conformidad plena con EncounterCL. El perfil exige type/serviceType (extensiones
+      # TiposEncuentro/TiposServicio con VS nacionales), participant.especialidad, period.start/end,
+      # reasonCode.text y serviceProvider (1..1) — datos que un ADT^A01 mínimo no porta y/o que usan
+      # catálogos DEIS. Se emite un Encounter base (status+class+subject); el resto requiere validación.
+notes: >-
+  ADT^A01 → CorePacienteCl + Encounter (base). Reutiliza el mapeo genérico v2→FHIR (nombre, fecha de
+  nacimiento, sexo, dirección, telecom); las convenciones nacionales (RUN, extensiones DEIS,
+  EncounterCL completo) quedan como TODO(mapeo). La validación cl-core solo cubre Patient.

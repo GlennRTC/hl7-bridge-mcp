@@ -4,7 +4,11 @@ import { Hl7BridgeError } from '../errors/index.js';
 import { messageTypeOf, resolveV2Path } from '../mapper/index.js';
 import { parseHl7v2 } from '../parser/index.js';
 import type { Hl7Message } from '../parser/types.js';
-import { FHIR_PROFILE, V2_REQUIREMENTS } from './catalog.js';
+import { V2_REQUIREMENTS } from './catalog.js';
+import { PROFILE_RULES, type ProfileId } from './profilePack.js';
+
+export type { ProfileId, ProfilePack, ProfilePackSource } from './profilePack.js';
+export { loadProfilePack, PROFILE_PACK_INPUTS } from './profilePack.js';
 
 export type { Explanation } from './explain.js';
 export { explainError } from './explain.js';
@@ -43,13 +47,14 @@ export function validateV2(input: string | Hl7Message): Issue[] {
   return issues;
 }
 
-export function validateFhir(input: fhir4.Bundle | fhir4.FhirResource): Issue[] {
+export function validateFhir(input: fhir4.Bundle | fhir4.FhirResource, profile: ProfileId = 'us-core'): Issue[] {
   const issues: Issue[] = [];
+  const profileRules = PROFILE_RULES[profile];
   // Un Bundle se valida por entradas; un recurso suelto se valida tal cual.
   const resources = input.resourceType === 'Bundle' ? (input.entry ?? []).map((e) => e.resource) : [input];
   for (const resource of resources) {
     if (!resource) continue;
-    const rules = FHIR_PROFILE[resource.resourceType];
+    const rules = profileRules[resource.resourceType];
     if (!rules) continue;
     for (const rule of rules) {
       // evaluate() sin opción async es síncrono; el modelo R4 resuelve value[x] y
@@ -93,8 +98,15 @@ function codingIssues(node: unknown, path: string): Issue[] {
 
 export type ValidateKind = 'hl7v2' | 'fhir';
 
-/** Entrada de la tool `validate_message`. `payload` es texto crudo (v2) o Bundle JSON (fhir). */
-export function validateMessage(payload: string | Hl7Message | fhir4.Bundle | fhir4.FhirResource, kind: ValidateKind): Issue[] {
+/**
+ * Entrada de la tool `validate_message`. `payload` es texto crudo (v2) o Bundle JSON (fhir).
+ * `profile` selecciona el pack FHIR nacional (solo aplica a kind "fhir"; en "hl7v2" se ignora).
+ */
+export function validateMessage(
+  payload: string | Hl7Message | fhir4.Bundle | fhir4.FhirResource,
+  kind: ValidateKind,
+  profile: ProfileId = 'us-core',
+): Issue[] {
   if (kind === 'hl7v2') {
     if (typeof payload !== 'string' && !('segments' in payload)) {
       throw new Hl7BridgeError('VALIDATE_INPUT', 'payload', 'kind "hl7v2" espera un mensaje HL7 v2 (texto o AST).');
@@ -104,5 +116,5 @@ export function validateMessage(payload: string | Hl7Message | fhir4.Bundle | fh
   if (typeof payload === 'string' || !('resourceType' in payload)) {
     throw new Hl7BridgeError('VALIDATE_INPUT', 'payload', 'kind "fhir" espera un Bundle FHIR.');
   }
-  return validateFhir(payload);
+  return validateFhir(payload, profile);
 }

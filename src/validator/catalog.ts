@@ -37,13 +37,20 @@ export const V2_REQUIREMENTS: Record<string, { segments: string[]; fields: strin
   },
 };
 
+/** Regla de perfil: `expr` (FHIRPath) debe cumplirse; `location` señala el elemento; incumplir = error. */
+export interface ProfileRule {
+  expr: string;
+  location: string;
+  message: string;
+}
+
 /**
  * Invariantes US Core (subconjunto) como expresiones FHIRPath evaluadas contra el
  * modelo R4: value[x] resuelve valueQuantity/valueString y .where() comprueba
  * slices reales, no solo presencia de un elemento. `expr` es la condición que
  * debe cumplirse; `location` señala el elemento para el issue. Incumplir = error.
  */
-export const FHIR_PROFILE: Record<string, { expr: string; location: string; message: string }[]> = {
+export const FHIR_PROFILE: Record<string, ProfileRule[]> = {
   Patient: [
     { expr: 'identifier.where(system.exists() and value.exists()).exists()', location: 'identifier', message: 'US Core Patient requiere un identifier con system y value.' },
     { expr: 'name.where(family.exists() or given.exists()).exists()', location: 'name', message: 'US Core Patient requiere un name con family o given.' },
@@ -55,6 +62,42 @@ export const FHIR_PROFILE: Record<string, { expr: string; location: string; mess
     { expr: 'code.coding.exists()', location: 'code', message: 'US Core Observation requiere code.coding.' },
     { expr: 'subject.reference.exists()', location: 'subject', message: 'US Core Observation requiere subject.' },
     { expr: 'value.exists() or dataAbsentReason.exists()', location: 'value[x]', message: 'US Core Observation requiere value[x] o dataAbsentReason.' },
+  ],
+};
+
+/**
+ * CL Core — CorePacienteCl (https://hl7chile.cl/fhir/ig/clcore/StructureDefinition/CorePacienteCl).
+ * Reglas estructurales derivadas de las cardinalidades min>=1 del differential real (v1.8.5),
+ * NO inventadas: identifier 1..*, name(NombreOficial).family 1..1, name.given 1..*. Mismo nivel
+ * que US Core: estructural + presencia must-support, NO binding/slicing normativo completo.
+ * CL Core no perfila Observation ni DiagnosticReport → las observaciones de ORU no tienen regla
+ * nacional (siguen FHIR base).
+ */
+export const CL_CORE_PROFILE: Record<string, ProfileRule[]> = {
+  Patient: [
+    { expr: 'identifier.exists()', location: 'identifier', message: 'CL Core (CorePacienteCl) requiere al menos un identifier (1..*).' },
+    { expr: 'name.where(family.exists()).exists()', location: 'name.family', message: 'CL Core (CorePacienteCl) requiere name.family (NombreOficial, 1..1).' },
+    { expr: 'name.where(given.exists()).exists()', location: 'name.given', message: 'CL Core (CorePacienteCl) requiere name.given (NombreOficial, 1..*).' },
+  ],
+};
+
+/**
+ * CO Core — PatientCO (http://co.fhir.guide/core/StructureDefinition/PatientCO).
+ * Reglas derivadas de las cardinalidades min>=1 del differential real (v0.1.0, local dev build):
+ * identifier 1..*, active 1..1 MS, name(OfficialPatientName).family/given, gender 1..1 MS,
+ * birthDate 1..1 MS, address(HomeAddress) con city/state/country 1..1. Mismo nivel que US Core
+ * (estructural + must-support, no normativa completa). CO Core tampoco perfila Observation/
+ * DiagnosticReport. ADVERTENCIA: v0.1.0 local dev build — estructura puede cambiar sin aviso.
+ */
+export const CO_CORE_PROFILE: Record<string, ProfileRule[]> = {
+  Patient: [
+    { expr: 'identifier.exists()', location: 'identifier', message: 'CO Core (PatientCO) requiere al menos un identifier (1..*).' },
+    { expr: 'active.exists()', location: 'active', message: 'CO Core (PatientCO) requiere active (1..1, must-support).' },
+    { expr: 'name.where(family.exists()).exists()', location: 'name.family', message: 'CO Core (PatientCO) requiere name.family (OfficialPatientName, 1..1).' },
+    { expr: 'name.where(given.exists()).exists()', location: 'name.given', message: 'CO Core (PatientCO) requiere name.given (OfficialPatientName, 1..*).' },
+    { expr: 'gender.exists()', location: 'gender', message: 'CO Core (PatientCO) requiere gender (1..1, must-support).' },
+    { expr: 'birthDate.exists()', location: 'birthDate', message: 'CO Core (PatientCO) requiere birthDate (1..1, must-support).' },
+    { expr: 'address.where(city.exists() and state.exists() and country.exists()).exists()', location: 'address', message: 'CO Core (PatientCO) requiere address (HomeAddress) con city, state y country (1..1).' },
   ],
 };
 

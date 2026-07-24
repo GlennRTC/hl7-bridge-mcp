@@ -60,17 +60,17 @@ export function createServer(): McpServer {
   server.registerTool(
     'map_v2_to_fhir',
     {
-      description: 'Mapea un mensaje HL7 v2 a un Bundle FHIR R4 con un mapa declarativo y valida el resultado contra US Core mínimo, explicando cada issue.',
-      inputSchema: { message: z.string(), mapId: z.string().optional(), fhirVersion: z.enum(['R4', 'R6']).optional() },
+      description: 'Mapea un mensaje HL7 v2 a un Bundle FHIR R4 con un mapa declarativo y valida el resultado contra el perfil indicado (US Core por defecto; cl-core/co-core para packs nacionales), explicando cada issue.',
+      inputSchema: { message: z.string(), mapId: z.string().optional(), fhirVersion: z.enum(['R4', 'R6']).optional(), profile: z.enum(['us-core', 'cl-core', 'co-core']).optional() },
     },
-    ({ message, mapId, fhirVersion }) => {
+    ({ message, mapId, fhirVersion, profile }) => {
       try {
         if (fhirVersion === 'R6') {
           throw new Hl7BridgeError('UNSUPPORTED_VERSION', 'fhirVersion', 'FHIR R6 aún no soportado en v0.1; usa R4.');
         }
         logMessageDebug('map_v2_to_fhir', message);
         const bundle = mapV2ToFhir(message, { mapId });
-        const issues = validateFhir(bundle);
+        const issues = validateFhir(bundle, profile);
         const explained = issues.map(explainError);
         logTool('map_v2_to_fhir', `ok (${issues.length} issues)`);
         return ok({ bundle, validation: { issues, explained } });
@@ -84,13 +84,13 @@ export function createServer(): McpServer {
   server.registerTool(
     'validate_message',
     {
-      description: 'Valida un mensaje HL7 v2 (segmentos/campos requeridos) o un Bundle FHIR (perfil US Core mínimo) y devuelve issues estructurados.',
-      inputSchema: { payload: z.string(), kind: z.enum(['hl7v2', 'fhir']), profile: z.string().optional() },
+      description: 'Valida un mensaje HL7 v2 (segmentos/campos requeridos) o un Bundle FHIR contra un perfil (US Core por defecto; cl-core/co-core para packs nacionales) y devuelve issues estructurados.',
+      inputSchema: { payload: z.string(), kind: z.enum(['hl7v2', 'fhir']), profile: z.enum(['us-core', 'cl-core', 'co-core']).optional() },
     },
-    ({ payload, kind }) => {
+    ({ payload, kind, profile }) => {
       try {
         const parsed = kind === 'fhir' ? (parseFhirPayload(payload) as fhir4.Bundle) : payload;
-        const issues = validateMessage(parsed, kind);
+        const issues = validateMessage(parsed, kind, profile);
         logTool('validate_message', `ok (${issues.length} issues)`);
         return ok({ issues });
       } catch (e) {

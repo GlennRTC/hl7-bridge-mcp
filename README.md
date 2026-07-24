@@ -42,12 +42,16 @@ code, it uses **declarative maps** ([`maps/`](maps/), readable and versionable Y
 | Tool | Input | Output |
 |------|-------|--------|
 | `parse_hl7v2` | `{ message }` | `{ ast }` — segments → fields → components, separators read from MSH-1/2 |
-| `map_v2_to_fhir` | `{ message, mapId?, fhirVersion? }` | `{ bundle, validation: { issues, explained } }` |
+| `map_v2_to_fhir` | `{ message, mapId?, fhirVersion?, profile? }` | `{ bundle, validation: { issues, explained } }` |
 | `validate_message` | `{ payload, kind: "hl7v2"\|"fhir", profile? }` | `{ issues }` with `location` (segment-field or FHIRPath) |
 | `explain_error` | `{ issue }` | `{ humanMessage, location, hint }` |
 
-Maps in v0.1: `ADT^A01`, `ORU^R01`, `ORM^O01` → FHIR R4 (see [`maps/`](maps/)). Non-obvious
-mappings are marked `TODO(mapeo)` and are **not guessed**.
+`profile` selects the FHIR profile pack: `us-core` (default), `cl-core`, or `co-core`
+(see [National profile packs](#national-profile-packs)).
+
+Maps in v0.1: `ADT^A01`, `ORU^R01`, `ORM^O01` → FHIR R4 (see [`maps/`](maps/)), plus national maps
+in [`maps/cl/`](maps/cl/) and [`maps/co/`](maps/co/). Non-obvious mappings are marked `TODO(mapeo)`
+and are **not guessed**.
 
 > Note: the server's human-readable messages (`message`, `humanMessage`, `hint`) are currently
 > emitted in Spanish. The examples below are translated for readability.
@@ -110,6 +114,44 @@ more cases (malformed, edge) are in [USAGE.md](USAGE.md).
   "hint": "Revisa el mensaje de origen contra la especificación del perfil." }
 ```
 </details>
+
+## National profile packs
+
+Beyond US Core, the validator ships **pluggable national profile packs** built on the same
+declarative mapping engine. Pass `profile` to `validate_message` / `map_v2_to_fhir`, and select the
+national map by `mapId`:
+
+| Pack | `profile` | Source | Maps |
+|------|-----------|--------|------|
+| **US Core** (default) | `us-core` | — | `maps/*.yaml` |
+| **CL Core** — `hl7.fhir.cl.clcore` v1.8.5 | `cl-core` | npm-style FHIR package | `maps/cl/{adt_a01,oru_r01}_to_clcore.yaml` |
+| **CO Core** — `hl7.fhir.co.core` v0.1.0 ⚠️ | `co-core` | loose StructureDefinition JSONs | `maps/co/{adt_a01,oru_r01}_to_cocore.yaml` |
+
+Two load modes exist because the official sources differ in shape: CL Core is a complete npm-style
+package (`package.json` + `.index.json`, read to confirm name/version/FHIR version), CO Core is a set
+of loose `StructureDefinition-*.json` with no manifest (version taken from the IG website, documented
+in code). ⚠️ **CO Core is a v0.1.0 local dev build — its structure can change without notice;
+re-validate before any release.**
+
+**What's covered:** `Patient` structural conformance (identifier, official name, and for CO
+`gender`/`birthDate`/`address`), reusing the generic v2→FHIR mapping (name, birth date, sex, address,
+telecom). Same level as US Core: **structural + must-support presence, not full value-set binding or
+normative slicing**.
+
+**What's `TODO(mapeo)` (deliberately not guessed):** national conventions with no spec-backed v2
+mapping — Chile's RUN identifier typing and DEIS/second-surname extensions; Colombia's
+identifier-type slices, `Patient.active`, DIVIPOLA codes, and profile extensions
+(`Fathers`/`MothersFamilyName`, `GenderIdentity`, `BirthPlace`…), each with the evaluated v2
+candidates documented in the map. Neither IG profiles `Observation`/`DiagnosticReport`, so lab
+resources in an ORU stay on base FHIR. Details in
+[`context/ARCHITECTURE.md`](context/ARCHITECTURE.md) → *Decisiones*.
+
+> **AR Core is intentionally not implemented** in this cycle: the only available source is a 2021
+> ci-build (v0.5.0) with no formal release. See the deferral note in `ARCHITECTURE.md`.
+
+No licensed terminology (LOINC/SNOMED) is redistributed; the IG packages themselves are not shipped
+with the npm package — validation runs on curated FHIRPath rules derived from each profile's real
+cardinalities.
 
 ## Try it (Claude Code)
 

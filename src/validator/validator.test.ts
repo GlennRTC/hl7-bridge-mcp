@@ -72,6 +72,32 @@ test('validateMessage despacha por kind y rechaza payload incorrecto', () => {
   expect(() => validateMessage({} as never, 'hl7v2')).toThrowError(Hl7BridgeError);
 });
 
+test('perfil nacional: cl-core valida el Patient del bundle sintético sin issues', () => {
+  const bundle = JSON.parse(fixture('cl/adt_a01_cl.bundle.json')) as fhir4.Bundle;
+  expect(validateFhir(bundle, 'cl-core')).toEqual([]);
+});
+
+test('perfil nacional: co-core aflora los TODO(mapeo) como PROFILE_REQUIRED', () => {
+  // El bundle CO es parcial a propósito: active (sin campo v2) y address (ORU sin PID-11) son TODO.
+  const adt = JSON.parse(fixture('co/adt_a01_co.bundle.json')) as fhir4.Bundle;
+  expect(codesAt(validateFhir(adt, 'co-core'))).toEqual(['PROFILE_REQUIRED@Patient.active']);
+  const oru = JSON.parse(fixture('co/oru_r01_co.bundle.json')) as fhir4.Bundle;
+  expect(codesAt(validateFhir(oru, 'co-core'))).toEqual(['PROFILE_REQUIRED@Patient.active', 'PROFILE_REQUIRED@Patient.address']);
+});
+
+test('perfil por defecto (us-core) es independiente de los packs nacionales', () => {
+  // El mismo bundle CL, bajo US Core, exige gender (que sí trae) → sin issues de Patient; pero un
+  // Patient sin gender bajo us-core sí falla, confirmando que cada pack aplica su propio ruleset.
+  const patient = { resourceType: 'Patient', identifier: [{ system: 's', value: '1' }], name: [{ family: 'X', given: ['Y'] }] } as fhir4.Patient;
+  expect(codesAt(validateFhir(patient, 'us-core'))).toContain('PROFILE_REQUIRED@Patient.gender');
+  expect(codesAt(validateFhir(patient, 'cl-core'))).toEqual([]); // cl-core no exige gender (min 0 en el SD)
+});
+
+test('validateMessage propaga el perfil a la validación FHIR', () => {
+  const bundle = fixture('co/adt_a01_co.bundle.json');
+  expect(codesAt(validateMessage(JSON.parse(bundle) as fhir4.Bundle, 'fhir', 'co-core'))).toEqual(['PROFILE_REQUIRED@Patient.active']);
+});
+
 test('explainError: campo faltante → ubicación legible y hint accionable', () => {
   const exp = explainError({ severity: 'error', code: 'MISSING_FIELD', location: 'OBR-4', message: 'Falta el campo requerido OBR-4 para ORM^O01.' });
   expect(exp.location).toContain('código de estudio');
