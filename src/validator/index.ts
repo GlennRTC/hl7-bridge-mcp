@@ -7,9 +7,6 @@ import type { Hl7Message } from '../parser/types.js';
 import { V2_REQUIREMENTS } from './catalog.js';
 import { PROFILE_RULES, type ProfileId } from './profilePack.js';
 
-export type { ProfileId, ProfilePack, ProfilePackSource } from './profilePack.js';
-export { loadProfilePack, PROFILE_PACK_INPUTS } from './profilePack.js';
-
 export type { Explanation } from './explain.js';
 export { explainError } from './explain.js';
 
