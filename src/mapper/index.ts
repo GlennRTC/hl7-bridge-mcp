@@ -5,6 +5,8 @@ import { z } from 'zod';
 import { Hl7BridgeError } from '../errors/index.js';
 import { parseHl7v2 } from '../parser/index.js';
 import type { Hl7Message, Segment } from '../parser/types.js';
+// Solo tipo: en runtime no hay ciclo (validator sí importa mapper).
+import type { Issue } from '../validator/index.js';
 import { transforms } from './transforms.js';
 
 export { transforms } from './transforms.js';
@@ -146,6 +148,54 @@ export interface MapOptions {
   maps?: Hl7FhirMap[];
   /** Generador de ids para fullUrl; inyectable en tests para salida determinista. */
   newId?: () => string;
+  /**
+   * Sumidero de issues del mapeo (mapa forzado, segmentos no consumidos). Opcional:
+   * quien no lo pasa obtiene solo el Bundle. Sin él, un mapeo degradado sería silencioso.
+   */
+  issues?: Issue[];
+}
+
+const SEGMENT_OF_PATH = /^([A-Z][A-Z0-9]{2})-/;
+
+/**
+ * Segmentos presentes en el mensaje que el mapa no consume (ni como ancla `from` de
+ * un recurso ni en ninguna ruta v2): su contenido no llega al Bundle. MSH se excluye
+ * por ser cabecera de transporte, no contenido clínico.
+ */
+function unmappedSegments(msg: Hl7Message, map: Hl7FhirMap): string[] {
+  const used = new Set<string>(['MSH']);
+  for (const res of map.resources) {
+    if (res.from !== undefined) used.add(res.from);
+    for (const entry of res.map) {
+      const seg = entry.from !== undefined ? SEGMENT_OF_PATH.exec(entry.from)?.[1] : undefined;
+      if (seg !== undefined) used.add(seg);
+    }
+  }
+  return [...new Set(msg.segments.map((s) => s.name))].filter((name) => !used.has(name));
+}
+
+/** Degradaciones del mapeo: mapa forzado que no corresponde a MSH-9, y segmentos ignorados. */
+function mappingIssues(msg: Hl7Message, map: Hl7FhirMap, forcedMapId: boolean): Issue[] {
+  const issues: Issue[] = [];
+  const declared = messageTypeOf(msg);
+  if (forcedMapId && map.messageType !== declared) {
+    issues.push({
+      severity: 'warning',
+      code: 'MAP_FALLBACK_APPLIED',
+      location: 'MSH-9',
+      message: `El mensaje declara "${declared}" pero se aplicó el mapa "${map.id}" (canónico "${map.messageType}") por mapId explícito. Verifica el agrupamiento SPM/OBR antes de confiar en el binding Specimen↔Observation.`,
+    });
+  }
+  for (const name of unmappedSegments(msg, map)) {
+    const count = msg.segments.filter((s) => s.name === name).length;
+    issues.push({
+      severity: 'warning',
+      code: 'UNMAPPED_SEGMENT',
+      location: name,
+      message: `El mapa "${map.id}" no consume el segmento ${name} (${count} ocurrencia${count === 1 ? '' : 's'} en el mensaje): su contenido no aparece en el Bundle.`,
+    });
+  }
+  return issues;
 }
 
 export function mapV2ToFhir(input: string | Hl7Message, opts: MapOptions = {}): fhir4.Bundle {
@@ -156,6 +206,7 @@ export function mapV2ToFhir(input: string | Hl7Message, opts: MapOptions = {}): 
     const wanted = opts.mapId ?? messageTypeOf(msg);
     throw new Hl7BridgeError('MAP_NOT_FOUND', opts.mapId !== undefined ? 'mapId' : 'MSH-9', `No hay mapa para "${wanted}". Mapas disponibles: ${maps.map((m) => m.id).join(', ')}.`);
   }
+  opts.issues?.push(...mappingIssues(msg, map, opts.mapId !== undefined));
 
   const newId = opts.newId ?? randomUUID;
   const entries: fhir4.BundleEntry[] = [];

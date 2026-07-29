@@ -37,7 +37,11 @@ test('e2e: ORU^R01 crudo → map_v2_to_fhir → Bundle validado; validador seña
   const obs = out.bundle.entry!.find((e) => e.resource!.resourceType === 'Observation')!.resource as fhir4.Observation;
   expect(obs.category![0]!.coding![0]!.code).toBe('laboratory');
   // El Patient también satisface US Core: identifier con value (PID-3.1) y system (PID-3.4).
-  expect(out.validation.issues).toEqual([]);
+  // Sin issues de perfil; el único warning es el NTE del fixture, que el mapa no consume.
+  expect(out.validation.issues).toEqual([
+    { severity: 'warning', code: 'UNMAPPED_SEGMENT', location: 'NTE', message: expect.any(String) },
+  ]);
+  expect(out.validation.explained[0]!.hint).toContain('TODO(mapeo)');
 });
 
 test('mensaje malformado → isError con error tipado', async () => {

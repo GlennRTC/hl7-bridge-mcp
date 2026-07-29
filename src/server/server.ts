@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { Hl7BridgeError } from '../errors/index.js';
 import { loadMaps, mapV2ToFhir } from '../mapper/index.js';
 import { parseHl7v2 } from '../parser/index.js';
-import { explainError, validateFhir, validateMessage } from '../validator/index.js';
+import { type Issue, explainError, validateFhir, validateMessage } from '../validator/index.js';
 import { logMessageDebug, logTool } from './log.js';
 
 // Leído del disco una vez por proceso: la descripción de mapId debe listar los mapas
@@ -92,8 +92,11 @@ export function createServer(): McpServer {
           throw new Hl7BridgeError('UNSUPPORTED_VERSION', 'fhirVersion', 'FHIR R6 aún no soportado en v0.1; usa R4.');
         }
         logMessageDebug('map_v2_to_fhir', message);
-        const bundle = mapV2ToFhir(message, { mapId });
-        const issues = validateFhir(bundle, profile);
+        // Las degradaciones del mapeo (mapa forzado, segmentos ignorados) van primero:
+        // condicionan cómo leer los issues de perfil que vienen después.
+        const issues: Issue[] = [];
+        const bundle = mapV2ToFhir(message, { mapId, issues });
+        issues.push(...validateFhir(bundle, profile));
         const explained = issues.map(explainError);
         logTool('map_v2_to_fhir', `ok (${issues.length} issues)`);
         return ok({ bundle, validation: { issues, explained } });

@@ -107,4 +107,8 @@ export const HINTS: Record<string, string> = {
   PROFILE_REQUIRED: 'El perfil FHIR exige este elemento (must-support). Ajusta el mapa o el mensaje de origen para poblarlo.',
   CODING_NO_SYSTEM: 'Añade el system URI del código (ej. http://loinc.org). En HL7 v2 suele venir en el 3.er componente (tabla 0396); si es local, registra su URI en el mapa.',
   CODING_EMPTY: 'El Coding no tiene code; revisa el componente de origen en el mensaje v2.',
+  MAP_FALLBACK_APPLIED:
+    'El mapa aplicado no es el canónico del tipo de mensaje. Confirma que la topología real (orientada a espécimen vs. a orden) coincide antes de confiar en el Bundle; si el trigger necesita su propio mapeo, crea un mapa en /maps en vez de forzar mapId.',
+  UNMAPPED_SEGMENT:
+    'El mapa no consume ese segmento: o su información no hace falta en el Bundle, o falta un recurso en el mapa. Revisa los TODO(mapeo) del YAML antes de dar el mapeo por completo.',
 };
