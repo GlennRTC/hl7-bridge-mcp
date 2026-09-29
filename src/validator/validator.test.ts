@@ -85,6 +85,12 @@ test('perfil nacional: co-core aflora los TODO(mapeo) como PROFILE_REQUIRED', ()
   expect(codesAt(validateFhir(oru, 'co-core'))).toEqual(['PROFILE_REQUIRED@Patient.active', 'PROFILE_REQUIRED@Patient.address']);
 });
 
+test('perfil nacional: cl-core exige given en NombreSocial (use=usual), no en otros nombres', () => {
+  const p = (name: fhir4.HumanName[]): fhir4.Patient => ({ resourceType: 'Patient', name });
+  expect(codesAt(validateFhir(p([{ use: 'usual', family: 'X' }]), 'cl-core'))).toEqual(['PROFILE_REQUIRED@Patient.name.given']);
+  expect(codesAt(validateFhir(p([{ use: 'usual', given: ['Y'] }, { use: 'official', family: 'X' }]), 'cl-core'))).toEqual([]);
+});
+
 test('perfil por defecto (us-core) es independiente de los packs nacionales', () => {
   // El mismo bundle CL, bajo US Core, exige gender (que sí trae) → sin issues de Patient; pero un
   // Patient sin gender bajo us-core sí falla, confirmando que cada pack aplica su propio ruleset.

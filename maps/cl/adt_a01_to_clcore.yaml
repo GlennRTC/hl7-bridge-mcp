@@ -6,7 +6,7 @@ resources:
   - type: Patient
     from: PID
     map:
-      # meta.profile declara conformidad con CorePacienteCl (CL Core v1.8.5).
+      # meta.profile declara conformidad con CorePacienteCl (CL Core v1.9.4).
       - { to: "meta.profile[0]", value: "https://hl7chile.cl/fhir/ig/clcore/StructureDefinition/CorePacienteCl" }
 
       # --- Identificador (genérico, valor+system tal cual como en el mapa US Core) ---

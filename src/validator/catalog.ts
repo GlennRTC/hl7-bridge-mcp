@@ -67,17 +67,16 @@ export const FHIR_PROFILE: Record<string, ProfileRule[]> = {
 
 /**
  * CL Core — CorePacienteCl (https://hl7chile.cl/fhir/ig/clcore/StructureDefinition/CorePacienteCl).
- * Reglas estructurales derivadas de las cardinalidades min>=1 del differential real (v1.8.5),
- * NO inventadas: identifier 1..*, name(NombreOficial).family 1..1, name.given 1..*. Mismo nivel
- * que US Core: estructural + presencia must-support, NO binding/slicing normativo completo.
- * CL Core no perfila Observation ni DiagnosticReport → las observaciones de ORU no tienen regla
- * nacional (siguen FHIR base).
+ * Reglas derivadas de las cardinalidades min>=1 del differential real (v1.9.4). Desde 1.9.x el IG
+ * ya NO exige identifier/name.family/name.given/gender/birthDate (1.8.5 sí): lo único propio
+ * de CL es que el slice NombreSocial (name.use=usual) exige given (1..*). Mismo nivel que US Core:
+ * estructural, NO binding/slicing normativo completo.
+ * CL Core 1.9.4 perfila Observation (CoreObservacionCL) pero sin cardinalidades min>=1 → no añade
+ * reglas; los mapas ORU siguen emitiendo Observation base (deuda: meta.profile de CoreObservacionCL).
  */
 export const CL_CORE_PROFILE: Record<string, ProfileRule[]> = {
   Patient: [
-    { expr: 'identifier.exists()', location: 'identifier', message: 'CL Core (CorePacienteCl) requiere al menos un identifier (1..*).' },
-    { expr: 'name.where(family.exists()).exists()', location: 'name.family', message: 'CL Core (CorePacienteCl) requiere name.family (NombreOficial, 1..1).' },
-    { expr: 'name.where(given.exists()).exists()', location: 'name.given', message: 'CL Core (CorePacienteCl) requiere name.given (NombreOficial, 1..*).' },
+    { expr: "name.where(use='usual').all(given.exists())", location: 'name.given', message: 'CL Core (CorePacienteCl) requiere name.given en el NombreSocial (use=usual, 1..*).' },
   ],
 };
 

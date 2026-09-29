@@ -124,7 +124,7 @@ national map by `mapId`:
 | Pack | `profile` | Source | Maps |
 |------|-----------|--------|------|
 | **US Core** (default) | `us-core` | — | `maps/*.yaml` |
-| **CL Core** — `hl7.fhir.cl.clcore` v1.8.5 | `cl-core` | npm-style FHIR package | `maps/cl/{adt_a01,oru_r01}_to_clcore.yaml` |
+| **CL Core** — `hl7.fhir.cl.clcore` v1.9.4 | `cl-core` | npm-style FHIR package | `maps/cl/{adt_a01,oru_r01}_to_clcore.yaml` |
 | **CO Core** — `hl7.fhir.co.core` v0.1.0 ⚠️ | `co-core` | loose StructureDefinition JSONs | `maps/co/{adt_a01,oru_r01}_to_cocore.yaml` |
 
 Two load modes exist because the official sources differ in shape: CL Core is a complete npm-style

@@ -14,7 +14,7 @@ export type ProfilePackSource =
   | {
       kind: 'npm-package';
       packageName: string; // ej. "hl7.fhir.cl.clcore"
-      packageVersion: string; // ej. "1.8.5"
+      packageVersion: string; // ej. "1.9.4"
       path: string; // ruta local al directorio /package
     }
   | {
@@ -115,7 +115,7 @@ export const PROFILE_PACK_INPUTS: Record<'cl-core' | 'co-core', ProfilePackInput
     source: {
       kind: 'npm-package',
       packageName: 'hl7.fhir.cl.clcore',
-      packageVersion: '1.8.5',
+      packageVersion: '1.9.4',
       path: fileURLToPath(new URL('fhir_clcore_ig/package/', IG_ROOT)),
     },
   },
