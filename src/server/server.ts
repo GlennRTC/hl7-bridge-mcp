@@ -66,7 +66,7 @@ async function narrate(server: McpServer, log: Logger, issue: Issue, explanation
 }
 
 export function createServer(): McpServer {
-  const server = new McpServer({ name: 'hl7-bridge-mcp', version: '0.1.0' }, { capabilities: { logging: {} } });
+  const server = new McpServer({ name: 'hl7-bridge-mcp', version: '0.2.0' }, { capabilities: { logging: {} } });
   const log = makeLogger(server);
 
   server.registerTool(

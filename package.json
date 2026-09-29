@@ -1,6 +1,6 @@
 {
   "name": "hl7-bridge-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server to parse, map and validate clinical messages between HL7 v2.x and FHIR R4/R6, with human-readable error explanations",
   "type": "module",
   "license": "Apache-2.0",
