@@ -1,6 +1,6 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { CreateMessageRequestSchema, LoggingMessageNotificationSchema, type CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 import { redactMessage } from './log.js';
@@ -37,7 +37,11 @@ test('e2e: ORU^R01 crudo → map_v2_to_fhir → Bundle validado; validador seña
   const obs = out.bundle.entry!.find((e) => e.resource!.resourceType === 'Observation')!.resource as fhir4.Observation;
   expect(obs.category![0]!.coding![0]!.code).toBe('laboratory');
   // El Patient también satisface US Core: identifier con value (PID-3.1) y system (PID-3.4).
-  expect(out.validation.issues).toEqual([]);
+  // Sin issues de perfil; el único warning es el NTE del fixture, que el mapa no consume.
+  expect(out.validation.issues).toEqual([
+    { severity: 'warning', code: 'UNMAPPED_SEGMENT', location: 'NTE', message: expect.any(String) },
+  ]);
+  expect(out.validation.explained[0]!.hint).toContain('TODO(mapeo)');
 });
 
 test('mensaje malformado → isError con error tipado', async () => {
@@ -70,4 +74,51 @@ test('redactMessage oculta segmentos con PHI y preserva el resto', () => {
   expect(redacted).toContain('PID|[REDACTED]');
   expect(redacted).toContain('NK1|[REDACTED]');
   expect(redacted).not.toContain('DOE');
+});
+
+const issueArgs = { issue: { severity: 'error', code: 'MISSING_FIELD', location: 'OBR-4', message: 'Falta OBR-4.' } };
+
+async function connectSamplingClient(handler: () => unknown): Promise<Client> {
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: 'test', version: '0' }, { capabilities: { sampling: {} } });
+  client.setRequestHandler(CreateMessageRequestSchema, handler as never);
+  await Promise.all([createServer().connect(serverTransport), client.connect(clientTransport)]);
+  return client;
+}
+
+test('explain_error con sampling: agrega narrative del LLM del cliente', async () => {
+  const client = await connectSamplingClient(() => ({ model: 'm', role: 'assistant', content: { type: 'text', text: 'Falta el código de examen.' } }));
+  const res = (await client.callTool({ name: 'explain_error', arguments: issueArgs })) as CallToolResult;
+  expect(JSON.parse(payload(res).text)).toMatchObject({ narrative: 'Falta el código de examen.', hint: expect.any(String) });
+});
+
+test('explain_error: si el sampling falla o no existe, responde solo determinista', async () => {
+  const failing = await connectSamplingClient(() => { throw new Error('rechazado'); });
+  for (const c of [failing, await connectClient()]) {
+    const res = (await c.callTool({ name: 'explain_error', arguments: issueArgs })) as CallToolResult;
+    expect(res.isError).toBeFalsy();
+    expect(JSON.parse(payload(res).text)).not.toHaveProperty('narrative');
+  }
+});
+
+test('logging MCP: notifica en español, sin contenido clínico', async () => {
+  const client = await connectClient();
+  const logs: { level: string; data: unknown }[] = [];
+  client.setNotificationHandler(LoggingMessageNotificationSchema, (n) => void logs.push(n.params));
+  await client.callTool({ name: 'map_v2_to_fhir', arguments: { message: fixture('oru_r01.hl7') } });
+  await client.callTool({ name: 'parse_hl7v2', arguments: { message: 'PID|1||42' } });
+  await new Promise((r) => setTimeout(r, 10));
+  expect(logs).toEqual([
+    { level: 'info', logger: 'map_v2_to_fhir', data: 'conversión completada (1 issues)' },
+    { level: 'error', logger: 'parse_hl7v2', data: 'falló: INVALID_HEADER' },
+  ]);
+});
+
+test('progreso MCP: map_v2_to_fhir reporta 4 pasos si el cliente pide progressToken', async () => {
+  const client = await connectClient();
+  const seen: number[] = [];
+  await client.callTool({ name: 'map_v2_to_fhir', arguments: { message: fixture('oru_r01.hl7') } }, undefined, {
+    onprogress: (p) => void seen.push(p.progress),
+  });
+  expect(seen).toEqual([0, 1, 2, 3]);
 });

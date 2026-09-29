@@ -1,0 +1,58 @@
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000001",
+      "resource": {
+        "resourceType": "Patient",
+        "meta": {
+          "profile": [
+            "http://co.fhir.guide/core/StructureDefinition/PatientCO"
+          ]
+        },
+        "identifier": [
+          {
+            "value": "1000000000",
+            "system": "CC-DEMO"
+          }
+        ],
+        "name": [
+          {
+            "use": "official",
+            "family": "GOMEZ",
+            "given": [
+              "ANDRES"
+            ]
+          }
+        ],
+        "birthDate": "1985-03-20",
+        "gender": "male",
+        "address": [
+          {
+            "line": [
+              "CALLE 10 20 30"
+            ],
+            "city": "BOGOTA",
+            "state": "BOGOTA DC",
+            "country": "CO"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000002",
+      "resource": {
+        "resourceType": "Encounter",
+        "status": "in-progress",
+        "class": {
+          "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+          "code": "AMB"
+        },
+        "subject": {
+          "reference": "urn:uuid:00000000-0000-4000-8000-000000000001"
+        }
+      }
+    }
+  ]
+}

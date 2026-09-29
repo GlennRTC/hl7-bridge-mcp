@@ -3,6 +3,7 @@
 context/
 tasks/
 CLAUDE.md
+fhir_igs/
 
 # Node
 node_modules/

@@ -1,0 +1,51 @@
+id: oru_r01_to_clcore
+messageType: ORU^R01
+target: fhir/R4
+profile: cl-core
+resources:
+  - type: Patient
+    from: PID
+    map:
+      - { to: "meta.profile[0]", value: "https://hl7chile.cl/fhir/ig/clcore/StructureDefinition/CorePacienteCl" }
+      - { from: "PID-3[1].1", to: "identifier[0].value" }
+      - { from: "PID-3[1].4", to: "identifier[0].system" }
+      # TODO(mapeo): RUN chileno — mismo TODO que adt_a01_to_clcore (tipo de identificador CL +
+      # system URI canónica del RUN). Requiere validación de campo.
+      - { to: "name[0].use", value: official }
+      - { from: PID-5.1, to: "name[0].family" }
+      - { from: PID-5.2, to: "name[0].given[0]" }
+      # TODO(mapeo): SegundoApellido (apellido materno) — sin componente XPN estándar; requiere validación.
+      - { from: PID-7, to: birthDate, transform: hl7_datetime }
+      - { from: PID-8, to: gender, transform: hl7_sex }
+  # CL Core NO perfila Observation ni DiagnosticReport → se reutiliza el mapeo genérico (FHIR base),
+  # idéntico a oru_r01_to_fhir_r4. No hay perfil nacional que validar sobre estos recursos.
+  - type: Observation
+    from: OBX
+    map:
+      - { to: "category[0].coding[0].system", value: "http://terminology.hl7.org/CodeSystem/observation-category" }
+      - { to: "category[0].coding[0].code", value: laboratory }
+      - { from: OBX-11, to: status, transform: hl7_result_status }
+      - { from: OBX-3.1, to: "code.coding[0].code" }
+      - { from: OBX-3.2, to: "code.coding[0].display" }
+      - { from: OBX-3.3, to: "code.coding[0].system", transform: hl7_coding_system }
+      - { from: OBX-5, to: ".", transform: obx_value_by_obx2 }
+      - { from: "OBX-8[*].1", to: "interpretation[*].coding[0].code" }
+      - { from: "OBX-8[*].1", to: "interpretation[*].coding[0].system", transform: hl7_interpretation_system }
+      - { from: OBX-7, to: "referenceRange[0].text" }
+      - { from: OBX-14, to: effectiveDateTime, transform: hl7_datetime }
+      - { to: subject, ref: Patient }
+  - type: DiagnosticReport
+    from: OBR
+    map:
+      - { to: "category[0].coding[0].system", value: "http://terminology.hl7.org/CodeSystem/v2-0074" }
+      - { to: "category[0].coding[0].code", value: LAB }
+      - { from: OBR-25, to: status, transform: hl7_report_status }
+      - { from: OBR-4.1, to: "code.coding[0].code" }
+      - { from: OBR-4.2, to: "code.coding[0].display" }
+      - { from: OBR-4.3, to: "code.coding[0].system", transform: hl7_coding_system }
+      - { to: result, refAll: Observation }
+      - { to: subject, ref: Patient }
+notes: >-
+  ORU^R01 → CorePacienteCl + Observation(es)/DiagnosticReport en FHIR base (CL Core no perfila esos
+  recursos). Patient reutiliza el mapeo genérico con los mismos TODO(mapeo) nacionales (RUN,
+  SegundoApellido). La validación cl-core solo aplica reglas a Patient.

@@ -1,0 +1,117 @@
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000001",
+      "resource": {
+        "resourceType": "Patient",
+        "meta": {
+          "profile": [
+            "http://co.fhir.guide/core/StructureDefinition/PatientCO"
+          ]
+        },
+        "identifier": [
+          {
+            "value": "1000000000",
+            "system": "CC-DEMO"
+          }
+        ],
+        "name": [
+          {
+            "use": "official",
+            "family": "GOMEZ",
+            "given": [
+              "ANDRES"
+            ]
+          }
+        ],
+        "birthDate": "1985-03-20",
+        "gender": "male"
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000002",
+      "resource": {
+        "resourceType": "Observation",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                "code": "laboratory"
+              }
+            ]
+          }
+        ],
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "code": "1554-5",
+              "display": "GLUCOSA",
+              "system": "http://loinc.org"
+            }
+          ]
+        },
+        "valueQuantity": {
+          "value": 88,
+          "unit": "mg/dL"
+        },
+        "interpretation": [
+          {
+            "coding": [
+              {
+                "code": "N",
+                "system": "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"
+              }
+            ]
+          }
+        ],
+        "referenceRange": [
+          {
+            "text": "70-105"
+          }
+        ],
+        "effectiveDateTime": "2026-07-24T11:00:00",
+        "subject": {
+          "reference": "urn:uuid:00000000-0000-4000-8000-000000000001"
+        }
+      }
+    },
+    {
+      "fullUrl": "urn:uuid:00000000-0000-4000-8000-000000000003",
+      "resource": {
+        "resourceType": "DiagnosticReport",
+        "category": [
+          {
+            "coding": [
+              {
+                "system": "http://terminology.hl7.org/CodeSystem/v2-0074",
+                "code": "LAB"
+              }
+            ]
+          }
+        ],
+        "status": "final",
+        "code": {
+          "coding": [
+            {
+              "code": "1554-5",
+              "display": "GLUCOSA",
+              "system": "http://loinc.org"
+            }
+          ]
+        },
+        "result": [
+          {
+            "reference": "urn:uuid:00000000-0000-4000-8000-000000000002"
+          }
+        ],
+        "subject": {
+          "reference": "urn:uuid:00000000-0000-4000-8000-000000000001"
+        }
+      }
+    }
+  ]
+}

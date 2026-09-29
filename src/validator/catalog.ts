@@ -37,13 +37,20 @@ export const V2_REQUIREMENTS: Record<string, { segments: string[]; fields: strin
   },
 };
 
+/** Regla de perfil: `expr` (FHIRPath) debe cumplirse; `location` señala el elemento; incumplir = error. */
+export interface ProfileRule {
+  expr: string;
+  location: string;
+  message: string;
+}
+
 /**
  * Invariantes US Core (subconjunto) como expresiones FHIRPath evaluadas contra el
  * modelo R4: value[x] resuelve valueQuantity/valueString y .where() comprueba
  * slices reales, no solo presencia de un elemento. `expr` es la condición que
  * debe cumplirse; `location` señala el elemento para el issue. Incumplir = error.
  */
-export const FHIR_PROFILE: Record<string, { expr: string; location: string; message: string }[]> = {
+export const FHIR_PROFILE: Record<string, ProfileRule[]> = {
   Patient: [
     { expr: 'identifier.where(system.exists() and value.exists()).exists()', location: 'identifier', message: 'US Core Patient requiere un identifier con system y value.' },
     { expr: 'name.where(family.exists() or given.exists()).exists()', location: 'name', message: 'US Core Patient requiere un name con family o given.' },
@@ -58,10 +65,49 @@ export const FHIR_PROFILE: Record<string, { expr: string; location: string; mess
   ],
 };
 
+/**
+ * CL Core — CorePacienteCl (https://hl7chile.cl/fhir/ig/clcore/StructureDefinition/CorePacienteCl).
+ * Reglas derivadas de las cardinalidades min>=1 del differential real (v1.9.4). Desde 1.9.x el IG
+ * ya NO exige identifier/name.family/name.given/gender/birthDate (1.8.5 sí): lo único propio
+ * de CL es que el slice NombreSocial (name.use=usual) exige given (1..*). Mismo nivel que US Core:
+ * estructural, NO binding/slicing normativo completo.
+ * CL Core 1.9.4 perfila Observation (CoreObservacionCL) pero sin cardinalidades min>=1 → no añade
+ * reglas; los mapas ORU siguen emitiendo Observation base (deuda: meta.profile de CoreObservacionCL).
+ */
+export const CL_CORE_PROFILE: Record<string, ProfileRule[]> = {
+  Patient: [
+    { expr: "name.where(use='usual').all(given.exists())", location: 'name.given', message: 'CL Core (CorePacienteCl) requiere name.given en el NombreSocial (use=usual, 1..*).' },
+  ],
+};
+
+/**
+ * CO Core — PatientCO (http://co.fhir.guide/core/StructureDefinition/PatientCO).
+ * Reglas derivadas de las cardinalidades min>=1 del differential real (v0.1.0, local dev build):
+ * identifier 1..*, active 1..1 MS, name(OfficialPatientName).family/given, gender 1..1 MS,
+ * birthDate 1..1 MS, address(HomeAddress) con city/state/country 1..1. Mismo nivel que US Core
+ * (estructural + must-support, no normativa completa). CO Core tampoco perfila Observation/
+ * DiagnosticReport. ADVERTENCIA: v0.1.0 local dev build — estructura puede cambiar sin aviso.
+ */
+export const CO_CORE_PROFILE: Record<string, ProfileRule[]> = {
+  Patient: [
+    { expr: 'identifier.exists()', location: 'identifier', message: 'CO Core (PatientCO) requiere al menos un identifier (1..*).' },
+    { expr: 'active.exists()', location: 'active', message: 'CO Core (PatientCO) requiere active (1..1, must-support).' },
+    { expr: 'name.where(family.exists()).exists()', location: 'name.family', message: 'CO Core (PatientCO) requiere name.family (OfficialPatientName, 1..1).' },
+    { expr: 'name.where(given.exists()).exists()', location: 'name.given', message: 'CO Core (PatientCO) requiere name.given (OfficialPatientName, 1..*).' },
+    { expr: 'gender.exists()', location: 'gender', message: 'CO Core (PatientCO) requiere gender (1..1, must-support).' },
+    { expr: 'birthDate.exists()', location: 'birthDate', message: 'CO Core (PatientCO) requiere birthDate (1..1, must-support).' },
+    { expr: 'address.where(city.exists() and state.exists() and country.exists()).exists()', location: 'address', message: 'CO Core (PatientCO) requiere address (HomeAddress) con city, state y country (1..1).' },
+  ],
+};
+
 export const HINTS: Record<string, string> = {
   MISSING_SEGMENT: 'Añade el segmento ausente antes de reenviar el mensaje.',
   MISSING_FIELD: 'Completa el campo requerido; el destino suele rechazar el mensaje sin él.',
   PROFILE_REQUIRED: 'El perfil FHIR exige este elemento (must-support). Ajusta el mapa o el mensaje de origen para poblarlo.',
   CODING_NO_SYSTEM: 'Añade el system URI del código (ej. http://loinc.org). En HL7 v2 suele venir en el 3.er componente (tabla 0396); si es local, registra su URI en el mapa.',
   CODING_EMPTY: 'El Coding no tiene code; revisa el componente de origen en el mensaje v2.',
+  MAP_FALLBACK_APPLIED:
+    'El mapa aplicado no es el canónico del tipo de mensaje. Confirma que la topología real (orientada a espécimen vs. a orden) coincide antes de confiar en el Bundle; si el trigger necesita su propio mapeo, crea un mapa en /maps en vez de forzar mapId.',
+  UNMAPPED_SEGMENT:
+    'El mapa no consume ese segmento: o su información no hace falta en el Bundle, o falta un recurso en el mapa. Revisa los TODO(mapeo) del YAML antes de dar el mapeo por completo.',
 };

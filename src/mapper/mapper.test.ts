@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
 import { Hl7BridgeError } from '../errors/index.js';
 import { parseHl7v2 } from '../parser/index.js';
+import type { Issue } from '../validator/index.js';
 import { loadMaps, mapSchema, mapV2ToFhir, resolveV2Path, transforms } from './index.js';
 
 const fixture = (name: string): string =>
@@ -15,8 +16,33 @@ const seqIds = () => {
 
 const maps = loadMaps();
 
-test('los mapas del repo cumplen el esquema', () => {
-  expect(maps.map((m) => m.id).sort()).toEqual(['adt_a01_to_fhir_r4', 'orm_o01_to_fhir_r4', 'oru_r01_to_fhir_r4', 'oul_r22_to_fhir_r4']);
+test('los mapas del repo cumplen el esquema (incluye packs nacionales en subdirectorios)', () => {
+  expect(maps.map((m) => m.id).sort()).toEqual([
+    'adt_a01_to_clcore',
+    'adt_a01_to_cocore',
+    'adt_a01_to_fhir_r4',
+    'orm_o01_to_fhir_r4',
+    'oru_r01_to_clcore',
+    'oru_r01_to_cocore',
+    'oru_r01_to_fhir_r4',
+    'oul_r22_to_fhir_r4',
+  ]);
+});
+
+test('auto-selección por MSH-9 ignora mapas nacionales (profile) y elige el base', () => {
+  // Hay 3 mapas ADT^A01 (base + cl-core + co-core); sin mapId debe salir el base.
+  const bundle = mapV2ToFhir(fixture('adt_a01.hl7'), { maps, newId: seqIds() });
+  expect(bundle).toEqual(JSON.parse(fixture('adt_a01.bundle.json')));
+});
+
+test.each([
+  ['cl/adt_a01_cl', 'adt_a01_to_clcore'],
+  ['cl/oru_r01_cl', 'oru_r01_to_clcore'],
+  ['co/adt_a01_co', 'adt_a01_to_cocore'],
+  ['co/oru_r01_co', 'oru_r01_to_cocore'],
+])('%s.hl7 → bundle nacional esperado (mapId %s)', (name, mapId) => {
+  const bundle = mapV2ToFhir(fixture(`${name}.hl7`), { maps, mapId, newId: seqIds() });
+  expect(bundle).toEqual(JSON.parse(fixture(`${name}.bundle.json`)));
 });
 
 test.each(['adt_a01', 'oru_r01', 'orm_o01'])('%s.hl7 → bundle esperado', (name) => {
@@ -160,6 +186,48 @@ test('OUL^R22 con más de un SPM → MAP_INVALID (ref: Specimen ambiguo, agrupac
   expect(() => mapV2ToFhir(raw, { maps })).toThrowError(
     expect.objectContaining({ code: 'MAP_INVALID' }),
   );
+});
+
+test('mapId forzado con MSH-9 distinto → MAP_FALLBACK_APPLIED + UNMAPPED_SEGMENT por segmento ignorado', () => {
+  // OUL^R21 (orientado a orden) forzado al mapa de R22 (orientado a espécimen): el bundle
+  // sale, pero la sustitución y el OBR ignorado no pueden quedar silenciosos.
+  const raw = [
+    'MSH|^~\\&|LIS|H|EMR|H|20260101||OUL^R21|1|P|2.5',
+    'PID|1||42||PEREZ^ANA||19900215|F',
+    'PV1|1|I',
+    'OBR|1|A||1554-5^GLUCOSE^LN|||20260101||||||||||||||||||F',
+    'SPM|1|S1||122575003^Urine^SCT',
+    'OBX|1|NM|1554-5^GLUCOSE^LN||95|mg/dL|||||F',
+  ].join('\r');
+  const issues: Issue[] = [];
+  mapV2ToFhir(raw, { maps, mapId: 'oul_r22_to_fhir_r4', newId: seqIds(), issues });
+  expect(issues.map((i) => [i.code, i.location])).toEqual([
+    ['MAP_FALLBACK_APPLIED', 'MSH-9'],
+    ['UNMAPPED_SEGMENT', 'PV1'],
+    ['UNMAPPED_SEGMENT', 'OBR'],
+  ]);
+  expect(issues.every((i) => i.severity === 'warning')).toBe(true);
+});
+
+test('mapId explícito que sí corresponde a MSH-9 no genera MAP_FALLBACK_APPLIED', () => {
+  const issues: Issue[] = [];
+  mapV2ToFhir(fixture('cl/oru_r01_cl.hl7'), { maps, mapId: 'oru_r01_to_clcore', newId: seqIds(), issues });
+  expect(issues.some((i) => i.code === 'MAP_FALLBACK_APPLIED')).toBe(false);
+});
+
+test('UNMAPPED_SEGMENT ignora MSH y cuenta las ocurrencias del segmento', () => {
+  const raw = [
+    'MSH|^~\\&|ADT|H|EMR|H|20260101||ADT^A01|1|P|2.5',
+    'EVN|A01|20260101',
+    'PID|1||42||PEREZ^ANA||19900215|F',
+    'NK1|1|PEREZ^JUAN|FTH',
+    'NK1|2|PEREZ^LUZ|MTH',
+    'PV1|1|I',
+  ].join('\r');
+  const issues: Issue[] = [];
+  mapV2ToFhir(raw, { maps, newId: seqIds(), issues });
+  expect(issues.map((i) => i.location)).toEqual(['EVN', 'NK1']);
+  expect(issues[1]!.message).toContain('2 ocurrencias');
 });
 
 test('obx_value_by_obx2: tipo no soportado → MAP_TRANSFORM', () => {

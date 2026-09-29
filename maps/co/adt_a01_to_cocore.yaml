@@ -1,0 +1,72 @@
+id: adt_a01_to_cocore
+messageType: ADT^A01
+target: fhir/R4
+profile: co-core
+resources:
+  - type: Patient
+    from: PID
+    map:
+      # meta.profile declara conformidad con PatientCO (CO Core v0.1.0, local dev build).
+      - { to: "meta.profile[0]", value: "http://co.fhir.guide/core/StructureDefinition/PatientCO" }
+
+      # --- Identificador (valor genérico; tipado nacional TODO) ---
+      - { from: "PID-3[1].1", to: "identifier[0].value" }
+      - { from: "PID-3[1].4", to: "identifier[0].system" }
+      # TODO(mapeo): PatientCO tipa el identifier con identifier.type.coding en DOS slices obligatorios
+      # (InternationalCode HL70203 + ColombianCode) — ej. CC (cédula), TI, RC. Mapear PID-3.5 (tabla
+      # 0203) → el par de códigos internacional+colombiano y sus system URIs requiere el registro
+      # oficial CO; NO se adivina. Requiere validación de campo.
+
+      # TODO(mapeo): Patient.active (1..1, must-support) no tiene campo v2 directo. Candidato evaluado:
+      # PID-30 (Patient Death Indicator) invertido, pero equiparar "no fallecido" a "registro activo"
+      # es una inferencia clínica, no un mapeo respaldado por la spec. Requiere validación.
+
+      # --- Nombre oficial (genérico; use=official es HumanName estándar) ---
+      - { to: "name[0].use", value: official }
+      - { from: PID-5.1, to: "name[0].family" }
+      - { from: PID-5.2, to: "name[0].given[0]" }
+      # TODO(mapeo): ExtensionFathersFamilyName / ExtensionMothersFamilyName (en name.family.extension).
+      # Candidatos v2 evaluados: (a) PID-5.1 family como string único — no separa apellido paterno de
+      # materno; (b) los subcomponentes FN de XPN.1 (FN.1 surname, FN.2 own-surname-prefix, FN.3
+      # own-surname, FN.4 surname-prefix-from-partner, FN.5 surname-from-partner) — semántica de
+      # "prefijo/pareja", NO "paterno/materno", así que no calzan con la convención colombiana; (c) una
+      # 2.ª repetición de PID-5 — reservada a otros usos de nombre. Ninguno da un mapeo obvio: TODO(mapeo).
+
+      # --- Demográficos genéricos (idénticos a US Core) ---
+      - { from: PID-7, to: birthDate, transform: hl7_datetime }
+      - { from: PID-8, to: gender, transform: hl7_sex }
+      # TODO(mapeo): ExtensionPatientGenderIdentity. Candidato evaluado: PID-8 (Administrative Sex,
+      # tabla 0001) — es sexo administrativo, NO identidad de género; son conceptos distintos y el
+      # propio perfil los separa (gender vs. la extensión). Sin campo v2 estándar para identidad de
+      # género: TODO(mapeo). ExtensionPatientEthnicity/PopulationGroup/Disability/Nationality: value
+      # sets nacionales sin campo v2 estándar → TODO(mapeo).
+
+      # TODO(mapeo): ExtensionBirthPlace. Candidato evaluado: PID-23 (Birth Place, ST texto libre) — la
+      # extensión CO espera lugar de nacimiento codificado (DIVIPOLA), no texto libre; PID-23 no aporta
+      # el código de municipio/departamento. TODO(mapeo).
+
+      # --- Dirección (texto genérico; códigos DIVIPOLA TODO) ---
+      - { from: PID-11.1, to: "address[0].line[0]" }
+      - { from: PID-11.3, to: "address[0].city" }
+      - { from: PID-11.4, to: "address[0].state" }
+      - { from: PID-11.6, to: "address[0].country" }
+      # TODO(mapeo): ExtensionDivipolaMunicipality (en address.city.extension) y
+      # ExtensionDivipolaDepartment (en address.state.extension) exigen el código DIVIPOLA del DANE; el
+      # texto libre de PID-11 no lo porta. DIVIPOLA es catálogo público del Estado (sin licencia), pero
+      # el mapeo texto→código requiere una tabla de resolución. Requiere validación de campo.
+  - type: Encounter
+    from: PV1
+    map:
+      - { to: status, value: in-progress }
+      - { from: PV1-2, to: class, transform: hl7_patient_class }
+      - { to: subject, ref: Patient }
+      # TODO(mapeo): CO Core no tiene un Encounter genérico: perfila EncounterConsultationCO /
+      # EncounterEmergencyCO / EncounterHospitalizationCO. Elegir cuál según PV1-2 (E→emergency,
+      # I→hospitalization, O→consultation) es plausible pero es una convención a validar; además cada
+      # perfil exige identifier/type/serviceType/period/reasonCode/diagnosis con catálogos CO. Se emite
+      # un Encounter base; la conformidad nacional queda como TODO(mapeo).
+notes: >-
+  ADT^A01 → PatientCO + Encounter (base). Reutiliza el mapeo genérico (nombre, fecha de nacimiento,
+  sexo, dirección texto, telecom). Convenciones nacionales como TODO(mapeo): tipo de identificador CO,
+  Patient.active, extensiones (Fathers/MothersFamilyName, GenderIdentity, BirthPlace, ethnicity...),
+  códigos DIVIPOLA y selección de perfil Encounter. Validación co-core solo cubre Patient.
