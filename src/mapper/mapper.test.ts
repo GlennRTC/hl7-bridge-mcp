@@ -1,4 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { expect, test } from 'vitest';
 import { Hl7BridgeError } from '../errors/index.js';
 import { parseHl7v2 } from '../parser/index.js';
@@ -250,4 +253,15 @@ test('rutas v2: ancla vs global y ruta inválida', () => {
 
 test('mapa que no cumple el esquema es rechazado', () => {
   expect(mapSchema.safeParse({ id: 'x', resources: 'nope' }).success).toBe(false);
+});
+
+test('loadMaps lee directorios con espacios', () => {
+  // La skill se instala en rutas arbitrarias; URL.pathname dejaría "%20" y fallaría con ENOENT.
+  const dir = mkdtempSync(join(tmpdir(), 'hl7 maps '));
+  try {
+    cpSync(fileURLToPath(new URL('../../maps/', import.meta.url)), dir, { recursive: true });
+    expect(loadMaps(pathToFileURL(`${dir}/`))).toHaveLength(maps.length);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
