@@ -10,6 +10,7 @@ import { PROFILE_RULES, type ProfileId } from './profilePack.js';
 
 export type { Explanation } from './explain.js';
 export { explainError } from './explain.js';
+export { DEFAULT_VALIDATOR_URL, validateFhirRemote, type ValidatorInfo } from './remote.js';
 
 /** Forma de un Issue como entrada externa (tool explain_error del MCP, comando explain del CLI). */
 export const issueSchema = z.object({
