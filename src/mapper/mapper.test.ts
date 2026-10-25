@@ -255,6 +255,27 @@ test('mapa que no cumple el esquema es rechazado', () => {
   expect(mapSchema.safeParse({ id: 'x', resources: 'nope' }).success).toBe(false);
 });
 
+const adtWithPid = (pid: string): string =>
+  ['MSH|^~\\&|ADT|HOSP-DEMO|EMR|HOSP-DEMO|20260724103000||ADT^A01|DEMO0009|P|2.5', 'EVN|A01|20260724103000', pid, 'PV1|1|O'].join('\r');
+
+const patientOf = (bundle: fhir4.Bundle) => bundle.entry![0]!.resource as fhir4.Patient;
+
+test('constantes con when: sin dato de origen no quedan elementos huérfanos', () => {
+  // PID sin nombre (PID-5) ni teléfono (PID-13): ni telecom con solo system ni name con solo use.
+  const msg = adtWithPid('PID|1||99999999^^^RUN-DEMO');
+  for (const mapId of ['adt_a01_to_fhir_r4', 'adt_a01_to_clcore', 'adt_a01_to_cocore']) {
+    const patient = patientOf(mapV2ToFhir(msg, { maps, mapId }));
+    expect(patient.telecom, mapId).toBeUndefined();
+    expect(patient.name, mapId).toBeUndefined();
+  }
+});
+
+test('when con lista: basta un camino con dato', () => {
+  // Solo nombre de pila (PID-5.2): el use se mantiene aunque falte el apellido.
+  const patient = patientOf(mapV2ToFhir(adtWithPid('PID|1||99999999^^^RUN-DEMO||^ANA'), { maps, mapId: 'adt_a01_to_clcore' }));
+  expect(patient.name).toEqual([{ use: 'official', given: ['ANA'] }]);
+});
+
 test('loadMaps lee directorios con espacios', () => {
   // La skill se instala en rutas arbitrarias; URL.pathname dejaría "%20" y fallaría con ENOENT.
   const dir = mkdtempSync(join(tmpdir(), 'hl7 maps '));

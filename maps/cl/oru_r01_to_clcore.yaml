@@ -11,7 +11,7 @@ resources:
       - { from: "PID-3[1].4", to: "identifier[0].system" }
       # TODO(mapeo): RUN chileno — mismo TODO que adt_a01_to_clcore (tipo de identificador CL +
       # system URI canónica del RUN). Requiere validación de campo.
-      - { to: "name[0].use", value: official }
+      - { to: "name[0].use", value: official, when: [PID-5.1, PID-5.2] }
       - { from: PID-5.1, to: "name[0].family" }
       - { from: PID-5.2, to: "name[0].given[0]" }
       # TODO(mapeo): SegundoApellido (apellido materno) — sin componente XPN estándar; requiere validación.
