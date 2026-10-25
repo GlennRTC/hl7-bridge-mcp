@@ -189,13 +189,16 @@ marked `// ../hl7-bridge-mcp/src/...`). Compared with the engine's `main`, the l
 3. `issueSchema` and `parseJsonPayload` exported from `src/validator/index.ts`, where `main` keeps an
    `issueSchema` and the JSON parsing inside `src/server/server.ts`. Restore them in the validator module
    and make `server.ts` import them. No behavior change for the MCP server.
-4. CL Core rules: the bundle has CL Core **1.8.5**, while engine `main` has **1.9.4** with realigned
+4. `loadMaps` in the bundle resolves files with `fileURLToPath(new URL(name, base))`. `main` uses
+   `.pathname`, which breaks on paths with spaces, and the skill's smoke test copies to such a path on
+   purpose. Restore the bundle's version.
+5. CL Core rules: the bundle has CL Core **1.8.5**, while engine `main` has **1.9.4** with realigned
    rules. Rebuilding the skill from `main` upgrades its inbuilt CL Core validation to 1.9.4. That's
    intended, but it is a behavior change the skill PR must call out.
 
 The comparison above was done section by section after stripping identifier renames. Re-check it by
 rebuilding the bundle from the restored engine and diffing the `// ../hl7-bridge-mcp/src/...` sections
-against the shipped bundle. The only expected differences are item 4 and the bundler's renames.
+against the shipped bundle. The only expected differences are item 5 and the bundler's renames.
 
 This restore lands as its own commit (`chore(cli): restore cli entry point from skill bundle`), with
 TypeScript types and a basic `src/cli.test.ts` covering the existing commands, before any remote code.
@@ -240,10 +243,14 @@ TypeScript types and a basic `src/cli.test.ts` covering the existing commands, b
 - Internal helper names and how the US Core profile table is declared.
 - How `cli.test.ts` drives `run()` (direct call with a stubbed stdin is enough).
 
-## Open questions
+## Skill CI (`hl7-bridge-skill/.github/workflows/merge-checks.yaml`)
 
-- CI for `hl7-bridge-skill`: the workflows were added under `hl7-fhir-bridge/.github/`. GitHub only reads
-  `.github/workflows/` at the repo root, and `build.mjs` zips the whole `hl7-fhir-bridge/` folder, so
-  they would ship inside the skill. They are also an unadapted template (`{{INSTALL_CMD}}` tokens,
-  `.nvmrc`, `INIT.md`, `.claude/skills/...` paths that don't exist here). The question of where they go
-  and what they run is still open with the user.
+The user moved the template workflows to the repo root and asked for `merge-checks.yaml` to be adapted.
+The skill repo has no lint and no unit tests. Its real check is `build.mjs`, which bundles the engine,
+runs a smoke test from a copy outside both repos, and zips the skill. Adapted `merge-checks`:
+
+- One job: check out this repo, check out `GlennRTC/hl7-bridge-mcp` at `main` into a subfolder, set up
+  Node 22 (matching the engine's CI), run `npm ci` in the engine, then `node build.mjs <engine path>`.
+- Drop the template scaffolding (INIT.md guard, `{{…}}` tokens, `.nvmrc`).
+- The other template workflows are left as the user placed them. `template-checks.yaml` references
+  scripts that don't exist in this repo and will fail. That's flagged to the user, not changed here.
