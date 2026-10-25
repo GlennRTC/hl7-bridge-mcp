@@ -1,5 +1,6 @@
 import fhirpath from 'fhirpath';
 import fhirR4Model from 'fhirpath/fhir-context/r4/index.js';
+import { z } from 'zod';
 import { Hl7BridgeError } from '../errors/index.js';
 import { messageTypeOf, resolveV2Path } from '../mapper/index.js';
 import { parseHl7v2 } from '../parser/index.js';
@@ -9,6 +10,24 @@ import { PROFILE_RULES, type ProfileId } from './profilePack.js';
 
 export type { Explanation } from './explain.js';
 export { explainError } from './explain.js';
+export { DEFAULT_VALIDATOR_URL, validateFhirRemote, type ValidatorInfo } from './remote.js';
+
+/** Forma de un Issue como entrada externa (tool explain_error del MCP, comando explain del CLI). */
+export const issueSchema = z.object({
+  severity: z.enum(['error', 'warning', 'information']),
+  code: z.string().describe('Código del issue, ej. PROFILE_REQUIRED o CODING_NO_SYSTEM.'),
+  location: z.string().describe('Ubicación FHIR o HL7 v2 del problema, ej. "Patient.identifier" o "PID-3.4".'),
+  message: z.string().describe('Mensaje técnico del validador, tal cual lo devolvió.'),
+});
+
+/** JSON malformado es error de entrada del usuario, no un fallo interno: error tipado y accionable. */
+export function parseJsonPayload(payload: string): unknown {
+  try {
+    return JSON.parse(payload);
+  } catch (e) {
+    throw new Hl7BridgeError('INVALID_JSON', 'payload', `El payload no es JSON válido: ${(e as Error).message}`);
+  }
+}
 
 export type Severity = 'error' | 'warning' | 'information';
 

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { Hl7BridgeError } from '../errors/index.js';
@@ -58,7 +59,7 @@ export function loadMaps(base: URL = DEFAULT_MAPS_DIR): Hl7FhirMap[] {
     if (e.isDirectory()) {
       out.push(...loadMaps(new URL(`${e.name}/`, base)));
     } else if (e.name.endsWith('.yaml') || e.name.endsWith('.yml')) {
-      out.push(loadMap(new URL(e.name, base).pathname));
+      out.push(loadMap(fileURLToPath(new URL(e.name, base))));
     }
   }
   return out;

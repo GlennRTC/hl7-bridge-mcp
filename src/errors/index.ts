@@ -14,3 +14,10 @@ export class Hl7BridgeError extends Error {
     this.name = 'Hl7BridgeError';
   }
 }
+
+/** Forma serializable de un error para clientes (CLI y MCP); lo que no es Hl7BridgeError es INTERNAL. */
+export function errorPayload(e: unknown): { code: string; location: string; humanMessage: string } {
+  return e instanceof Hl7BridgeError
+    ? { code: e.code, location: e.location, humanMessage: e.humanMessage }
+    : { code: 'INTERNAL', location: '-', humanMessage: (e as Error).message };
+}
