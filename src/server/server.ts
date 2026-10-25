@@ -1,10 +1,18 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { Hl7BridgeError } from '../errors/index.js';
+import { errorPayload, Hl7BridgeError } from '../errors/index.js';
 import { loadMaps, mapV2ToFhir } from '../mapper/index.js';
 import { parseHl7v2 } from '../parser/index.js';
-import { explainError, validateFhir, validateMessage, type Explanation, type Issue } from '../validator/index.js';
+import {
+  explainError,
+  issueSchema,
+  parseJsonPayload,
+  validateFhir,
+  validateMessage,
+  type Explanation,
+  type Issue,
+} from '../validator/index.js';
 import { logMessageDebug, makeLogger, type Logger } from './log.js';
 
 // Leído del disco una vez por proceso: la descripción de mapId debe listar los mapas
@@ -13,34 +21,14 @@ const MAP_IDS = loadMaps()
   .map((m) => (m.profile !== undefined ? `${m.id} (perfil ${m.profile}, requiere mapId explícito)` : m.id))
   .join(', ');
 
-const issueSchema = z.object({
-  severity: z.enum(['error', 'warning', 'information']),
-  code: z.string().describe('Código del issue, ej. PROFILE_REQUIRED o CODING_NO_SYSTEM.'),
-  location: z.string().describe('Ubicación FHIR o HL7 v2 del problema, ej. "Patient.identifier" o "PID-3.4".'),
-  message: z.string().describe('Mensaje técnico del validador, tal cual lo devolvió.'),
-});
-
 function ok(data: unknown): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-}
-
-/** JSON malformado es error de entrada del usuario, no un fallo interno: error tipado y accionable. */
-function parseFhirPayload(payload: string): unknown {
-  try {
-    return JSON.parse(payload);
-  } catch (e) {
-    throw new Hl7BridgeError('INVALID_JSON', 'payload', `El payload FHIR no es JSON válido: ${(e as Error).message}`);
-  }
 }
 
 const errCode = (e: unknown): string => (e instanceof Hl7BridgeError ? e.code : 'INTERNAL');
 
 function fail(e: unknown): CallToolResult {
-  const error =
-    e instanceof Hl7BridgeError
-      ? { code: e.code, location: e.location, humanMessage: e.humanMessage }
-      : { code: 'INTERNAL', location: '-', humanMessage: (e as Error).message };
-  return { content: [{ type: 'text', text: JSON.stringify({ error }, null, 2) }], isError: true };
+  return { content: [{ type: 'text', text: JSON.stringify({ error: errorPayload(e) }, null, 2) }], isError: true };
 }
 
 /**
@@ -158,7 +146,7 @@ export function createServer(): McpServer {
     },
     ({ payload, kind, profile }) => {
       try {
-        const parsed = kind === 'fhir' ? (parseFhirPayload(payload) as fhir4.Bundle) : payload;
+        const parsed = kind === 'fhir' ? (parseJsonPayload(payload) as fhir4.Bundle) : payload;
         const issues = validateMessage(parsed, kind, profile);
         log('info', 'validate_message', `validación completada (${issues.length} issues)`);
         return ok({ issues });
