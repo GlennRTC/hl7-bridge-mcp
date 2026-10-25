@@ -48,6 +48,10 @@ export async function validateFhirRemote(
   profile: ProfileId,
   url: string,
 ): Promise<{ issues: Issue[]; validator: RemoteValidatorInfo }> {
+  // El payload suele venir de JSON sin tipar: lo que no es FHIR no debe salir de la máquina.
+  if (typeof payload !== 'object' || payload === null || !('resourceType' in payload)) {
+    throw new Hl7BridgeError('VALIDATE_INPUT', 'payload', 'kind "fhir" espera un Bundle FHIR.');
+  }
   const ig = IG_PACKAGES[profile];
   if (ig === undefined) {
     throw new Hl7BridgeError(

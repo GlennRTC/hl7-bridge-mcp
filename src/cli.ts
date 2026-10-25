@@ -10,7 +10,16 @@ import { parseArgs } from 'node:util';
 import { errorPayload, Hl7BridgeError } from './errors/index.js';
 import { loadMaps, mapV2ToFhir } from './mapper/index.js';
 import { parseHl7v2 } from './parser/index.js';
-import { explainError, issueSchema, parseJsonPayload, validateFhir, validateMessage, type Issue } from './validator/index.js';
+import {
+  DEFAULT_VALIDATOR_URL,
+  explainError,
+  issueSchema,
+  parseJsonPayload,
+  validateFhirRemote,
+  validateMessage,
+  type Issue,
+  type ValidatorInfo,
+} from './validator/index.js';
 import type { ProfileId } from './validator/profilePack.js';
 
 // Relativo a este archivo: en el engine apunta a maps/ del repo; en la skill, a hl7-fhir-bridge/maps/.
@@ -19,11 +28,14 @@ const PROFILES: readonly string[] = ['us-core', 'cl-core', 'co-core'];
 
 export const USAGE = `Usage: hl7bridge <command> [file|-] [options]   (no file or "-" reads stdin)
   parse    <hl7>                                   HL7 v2 message -> typed AST
-  map      <hl7> [--map ID] [--profile P]          HL7 v2 -> FHIR R4 Bundle + explained validation
-  validate <payload> --kind hl7v2|fhir [--profile P]  structured issues, no conversion
+  map      <hl7> [--map ID] [--profile P] [--validator V] [--validator-url URL]
+                                                   HL7 v2 -> FHIR R4 Bundle + explained validation
+  validate <payload> --kind hl7v2|fhir [--profile P] [--validator V] [--validator-url URL]
+                                                   structured issues, no conversion
   explain  <issue.json>                            human explanation of one issue
   maps                                             available maps (national maps need --map)
-P = us-core (default) | cl-core | co-core`;
+P = us-core (default) | cl-core | co-core
+V = inbuilt (default) | remote (FHIR only; URL default ${DEFAULT_VALIDATOR_URL})`;
 
 export interface CliResult {
   exitCode: 0 | 1 | 2;
@@ -41,7 +53,13 @@ export async function run(argv: string[], stdin: () => string = () => readFileSy
     args = parseArgs({
       args: argv,
       allowPositionals: true,
-      options: { map: { type: 'string' }, profile: { type: 'string' }, kind: { type: 'string' } },
+      options: {
+        map: { type: 'string' },
+        profile: { type: 'string' },
+        kind: { type: 'string' },
+        validator: { type: 'string' },
+        'validator-url': { type: 'string' },
+      },
     });
   } catch (e) {
     return usage((e as Error).message);
@@ -49,7 +67,21 @@ export async function run(argv: string[], stdin: () => string = () => readFileSy
   const { values, positionals } = args;
   const [cmd, src] = positionals;
   if (values.profile !== undefined && !PROFILES.includes(values.profile)) return usage(`Unknown --profile "${values.profile}".`);
-  const profile = values.profile as ProfileId | undefined;
+  const profile = (values.profile ?? 'us-core') as ProfileId;
+  const remote = values.validator === 'remote';
+  if (values.validator !== undefined && !remote && values.validator !== 'inbuilt') return usage(`Unknown --validator "${values.validator}".`);
+  const validatorUrl = values['validator-url'];
+  // Sin --validator remote, una URL sería ignorada y el usuario creería haber validado en remoto.
+  if (validatorUrl !== undefined && !remote) return usage('--validator-url needs --validator remote.');
+  if (validatorUrl !== undefined && !(URL.canParse(validatorUrl) && ['http:', 'https:'].includes(new URL(validatorUrl).protocol))) {
+    return usage(`--validator-url must be an http(s) URL, got "${validatorUrl}".`);
+  }
+
+  // Remoto o inbuilt, nunca ambos: si el remoto falla, el error sale tal cual (sin fallback).
+  const validateBundle = async (payload: fhir4.Bundle | fhir4.FhirResource): Promise<{ issues: Issue[]; validator: ValidatorInfo }> =>
+    remote
+      ? validateFhirRemote(payload, profile, validatorUrl ?? DEFAULT_VALIDATOR_URL)
+      : { issues: validateMessage(payload, 'fhir', profile), validator: { kind: 'inbuilt' } };
 
   const input = (): string => {
     if (src === undefined || src === '-') return stdin();
@@ -68,15 +100,17 @@ export async function run(argv: string[], stdin: () => string = () => readFileSy
         // Las degradaciones del mapeo van primero: condicionan cómo leer los issues de perfil.
         const issues: Issue[] = [];
         const bundle = mapV2ToFhir(input(), { mapId: values.map, issues, maps: loadMaps(MAPS_DIR) });
-        issues.push(...validateFhir(bundle, profile));
-        return { exitCode: 0, out: { bundle, validation: { issues, explained: issues.map(explainError) } } };
+        const checked = await validateBundle(bundle);
+        issues.push(...checked.issues);
+        return { exitCode: 0, out: { bundle, validation: { issues, explained: issues.map(explainError), validator: checked.validator } } };
       }
       case 'validate': {
         const kind = values.kind;
         if (kind !== 'hl7v2' && kind !== 'fhir') return usage('validate needs --kind hl7v2|fhir.');
+        if (kind === 'hl7v2' && remote) return usage('--validator remote only validates FHIR (--kind fhir).');
         const raw = input();
-        const payload = kind === 'fhir' ? (parseJsonPayload(raw) as fhir4.Bundle) : raw;
-        return { exitCode: 0, out: { issues: validateMessage(payload, kind, profile) } };
+        if (kind === 'hl7v2') return { exitCode: 0, out: { issues: validateMessage(raw, kind, profile), validator: { kind: 'inbuilt' } } };
+        return { exitCode: 0, out: await validateBundle(parseJsonPayload(raw) as fhir4.Bundle) };
       }
       case 'explain': {
         const parsed = issueSchema.safeParse(parseJsonPayload(input()));
