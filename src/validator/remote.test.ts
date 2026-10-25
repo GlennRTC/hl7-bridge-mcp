@@ -89,6 +89,20 @@ test('cl-core: envía el payload sin tocar', async () => {
   expect(body.cliContext.igs).toEqual(['hl7.fhir.cl.clcore']);
 });
 
+test('cl-core: declara CorePacienteCl en un Patient sin perfil', async () => {
+  // Sin declaración el validador solo revisaría R4 base aunque el usuario pidió CL Core.
+  const fetchFn = stubFetch(respond(200, outcome([])));
+  await validateFhirRemote(fixture('oru_r01.bundle.json'), 'cl-core', DEFAULT_VALIDATOR_URL);
+  const profiles = (sentContent(fetchFn) as fhir4.Bundle).entry!.map((e) => e.resource?.meta?.profile);
+  expect(profiles).toEqual([[CL_PATIENT], undefined, undefined]);
+});
+
+test('no sigue redirecciones: el payload solo va a la URL elegida', async () => {
+  const fetchFn = stubFetch(respond(200, outcome([])));
+  await validateFhirRemote({ resourceType: 'Patient' }, 'us-core', DEFAULT_VALIDATOR_URL);
+  expect(fetchFn.mock.calls[0]![1].redirect).toBe('error');
+});
+
 test('prefijo de ruta del validador propio', async () => {
   const fetchFn = stubFetch(respond(200, outcome([])));
   await validateFhirRemote({ resourceType: 'Patient' }, 'us-core', 'https://host/validator/');
@@ -173,7 +187,14 @@ test('4xx → REJECTED', async () => {
 });
 
 test('200 sin la forma esperada → REJECTED', async () => {
-  for (const response of [respond(200, {}), respond(200, '<html>', 'text/html')]) {
+  // outcomes vacío = el archivo no se validó; issues con basura = no es la respuesta del validador.
+  for (const response of [
+    respond(200, {}),
+    respond(200, '<html>', 'text/html'),
+    respond(200, { outcomes: [] }),
+    respond(200, outcome([null])),
+    respond(200, outcome([{ level: 'ERROR', location: 42, message: 'm' }])),
+  ]) {
     stubFetch(response);
     const err = await rejection(validateFhirRemote(fixture('oru_r01.bundle.json'), 'us-core', DEFAULT_VALIDATOR_URL));
     expect(err.code).toBe('REMOTE_VALIDATOR_REJECTED');

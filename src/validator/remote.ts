@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { Hl7BridgeError } from '../errors/index.js';
 import type { Issue, Severity } from './index.js';
 import type { ProfileId } from './profilePack.js';
@@ -19,29 +20,44 @@ const IG_PACKAGES: Partial<Record<ProfileId, string>> = {
   'cl-core': 'hl7.fhir.cl.clcore',
 };
 
-// Los mapas US Core no declaran meta.profile y, sin declaración, el validador solo revisa R4 base.
-// Los mapas solo producen observaciones y reportes de laboratorio.
+// Sin meta.profile el validador solo revisa R4 base aunque se haya cargado el IG, así que cada
+// recurso sin declaración recibe la del perfil pedido (en una copia). Los mapas US Core solo
+// producen observaciones y reportes de laboratorio; los CL declaran CorePacienteCl en Patient.
 const US_CORE_SD = 'http://hl7.org/fhir/us/core/StructureDefinition/';
-const US_CORE_PROFILES: Record<string, string> = {
-  Patient: 'us-core-patient',
-  Encounter: 'us-core-encounter',
-  Observation: 'us-core-observation-lab',
-  DiagnosticReport: 'us-core-diagnosticreport-lab',
-  ServiceRequest: 'us-core-servicerequest',
-  Specimen: 'us-core-specimen',
+const PROFILE_CLAIMS: Partial<Record<ProfileId, Record<string, string>>> = {
+  'us-core': {
+    Patient: `${US_CORE_SD}us-core-patient`,
+    Encounter: `${US_CORE_SD}us-core-encounter`,
+    Observation: `${US_CORE_SD}us-core-observation-lab`,
+    DiagnosticReport: `${US_CORE_SD}us-core-diagnosticreport-lab`,
+    ServiceRequest: `${US_CORE_SD}us-core-servicerequest`,
+    Specimen: `${US_CORE_SD}us-core-specimen`,
+  },
+  'cl-core': { Patient: 'https://hl7chile.cl/fhir/ig/clcore/StructureDefinition/CorePacienteCl' },
 };
 
 const SEVERITY: Record<string, Severity> = { FATAL: 'error', ERROR: 'error', WARNING: 'warning', INFORMATION: 'information' };
 const BASE_SD = 'http://hl7.org/fhir/StructureDefinition/';
 const TIMEOUT_MS = 60_000;
 
-interface RemoteIssue {
-  level?: string;
-  location?: string;
-  message?: string;
-  messageId?: string;
-  validationContext?: string;
-}
+// Se envía un solo archivo: sin outcomes, ese archivo no se validó y no puede leerse como "sin issues".
+const responseSchema = z.object({
+  outcomes: z
+    .array(
+      z.object({
+        issues: z.array(
+          z.object({
+            level: z.string().nullish(),
+            location: z.string().nullish(),
+            message: z.string().nullish(),
+            messageId: z.string().nullish(),
+            validationContext: z.string().nullish(),
+          }),
+        ),
+      }),
+    )
+    .min(1),
+});
 
 export async function validateFhirRemote(
   payload: fhir4.Bundle | fhir4.FhirResource,
@@ -61,11 +77,14 @@ export async function validateFhirRemote(
     );
   }
   const base = url.replace(/\/+$/, '');
-  const content = profile === 'us-core' ? withUsCoreClaims(payload) : payload;
   const body = JSON.stringify({
     cliContext: { sv: '4.0.1', igs: [ig], locale: 'es' },
     filesToValidate: [
-      { fileName: payload.resourceType === 'Bundle' ? 'bundle.json' : 'resource.json', fileContent: JSON.stringify(content), fileType: 'json' },
+      {
+        fileName: payload.resourceType === 'Bundle' ? 'bundle.json' : 'resource.json',
+        fileContent: JSON.stringify(withProfileClaims(payload, PROFILE_CLAIMS[profile] ?? {})),
+        fileType: 'json',
+      },
     ],
   });
 
@@ -76,6 +95,8 @@ export async function validateFhirRemote(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,
+      // Una redirección reenviaría el payload a un host que el usuario no eligió.
+      redirect: 'error',
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     status = res.status;
@@ -110,26 +131,25 @@ export async function validateFhirRemote(
   };
 }
 
-/** Copia del payload con meta.profile de US Core en cada recurso que no declare uno. */
-function withUsCoreClaims(payload: fhir4.Bundle | fhir4.FhirResource): fhir4.Bundle | fhir4.FhirResource {
+/** Copia del payload con meta.profile en cada recurso que no declare uno y tenga perfil en `claims`. */
+function withProfileClaims(payload: fhir4.Bundle | fhir4.FhirResource, claims: Record<string, string>): fhir4.Bundle | fhir4.FhirResource {
   const copy = structuredClone(payload);
   const resources = copy.resourceType === 'Bundle' ? (copy.entry ?? []).map((e) => e.resource) : [copy];
   for (const resource of resources) {
-    const sd = resource && US_CORE_PROFILES[resource.resourceType];
-    if (resource && sd && !resource.meta?.profile?.length) resource.meta = { ...resource.meta, profile: [`${US_CORE_SD}${sd}`] };
+    const claim = resource && claims[resource.resourceType];
+    if (resource && claim && !resource.meta?.profile?.length) resource.meta = { ...resource.meta, profile: [claim] };
   }
   return copy;
 }
 
-/** Issues de la respuesta, o undefined si no tiene la forma {outcomes: [{issues: []}]}. */
-function remoteIssues(text: string): RemoteIssue[] | undefined {
+/** Issues de la respuesta, o undefined si no es la respuesta del validador. */
+function remoteIssues(text: string): z.infer<typeof responseSchema>['outcomes'][number]['issues'] | undefined {
   let data: unknown;
   try {
     data = JSON.parse(text);
   } catch {
     return undefined;
   }
-  const outcomes = (data as { outcomes?: unknown } | null)?.outcomes;
-  if (!Array.isArray(outcomes) || !outcomes.every((o) => Array.isArray((o as { issues?: unknown } | null)?.issues))) return undefined;
-  return outcomes.flatMap((o) => (o as { issues: RemoteIssue[] }).issues);
+  const parsed = responseSchema.safeParse(data);
+  return parsed.success ? parsed.data.outcomes.flatMap((o) => o.issues) : undefined;
 }

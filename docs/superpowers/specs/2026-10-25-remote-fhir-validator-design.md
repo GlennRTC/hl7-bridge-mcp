@@ -118,9 +118,15 @@ validate <payload> --kind hl7v2|fhir [--profile P] [--validator inbuilt|remote] 
   | ServiceRequest | `…/us-core-servicerequest` |
   | Specimen | `…/us-core-specimen` |
 
-  Other resource types are sent without a claim. Only for `--profile us-core`. For `cl-core`, resources
-  are sent as they are, because the maps already claim `CorePacienteCl`.
+  Other resource types are sent without a claim. For `cl-core`, an unclaimed Patient gets
+  `https://hl7chile.cl/fhir/ig/clcore/StructureDefinition/CorePacienteCl`, the same claim the CL maps
+  make. Without it, `validate --kind fhir --profile cl-core` on an unclaimed Bundle, or a base map run
+  with `--profile cl-core`, would only be checked against base R4. (Amended after the final review;
+  the first draft relied on the maps' claims alone.)
 - Timeout: 60 s via `AbortSignal.timeout(60_000)`. Constant, not configurable.
+- Redirects are not followed (`redirect: 'error'`), so the payload only goes to the URL the user chose.
+- A 200 response must have at least one outcome. An empty `outcomes` means the file wasn't validated,
+  so it's `REMOTE_VALIDATOR_REJECTED`, not a clean pass.
 
 ### Response → issues
 
