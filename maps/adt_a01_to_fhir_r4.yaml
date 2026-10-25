@@ -19,7 +19,7 @@ resources:
       - { from: PID-11.4, to: "address[0].state" }
       - { from: PID-11.5, to: "address[0].postalCode" }
       - { from: PID-11.6, to: "address[0].country" }
-      - { to: "telecom[0].system", value: phone }
+      - { to: "telecom[0].system", value: phone, when: PID-13 }
       - { from: PID-13, to: "telecom[0].value" }
   - type: Encounter
     from: PV1

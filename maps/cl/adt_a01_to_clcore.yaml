@@ -19,7 +19,7 @@ resources:
       # tipo-v2→CL y la URI oficial; NO se adivina. Requiere validación de campo.
 
       # --- Nombre oficial (genérico; use=official es HumanName estándar, exigido por NombreOficial) ---
-      - { to: "name[0].use", value: official }
+      - { to: "name[0].use", value: official, when: [PID-5.1, PID-5.2] }
       - { from: PID-5.1, to: "name[0].family" }
       - { from: PID-5.2, to: "name[0].given[0]" }
       # TODO(mapeo): SegundoApellido (extension en name.family.extension). El apellido materno chileno
@@ -42,7 +42,7 @@ resources:
       - { from: PID-11.6, to: "address[0].country" }
       # TODO(mapeo): ComunasCl/ProvinciasCl/RegionesCl codifican la dirección chilena con CodeSystems
       # DEIS propios sobre address.extension; el texto libre de PID-11 no aporta esos códigos.
-      - { to: "telecom[0].system", value: phone }
+      - { to: "telecom[0].system", value: phone, when: PID-13 }
       - { from: PID-13, to: "telecom[0].value" }
   - type: Encounter
     from: PV1

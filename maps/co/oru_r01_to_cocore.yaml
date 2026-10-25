@@ -13,7 +13,7 @@ resources:
       # mismo TODO que adt_a01_to_cocore. Requiere validación de campo.
       # TODO(mapeo): Patient.active (1..1 MS) sin campo v2 directo (candidato PID-30 invertido, es
       # inferencia). Requiere validación.
-      - { to: "name[0].use", value: official }
+      - { to: "name[0].use", value: official, when: [PID-5.1, PID-5.2] }
       - { from: PID-5.1, to: "name[0].family" }
       - { from: PID-5.2, to: "name[0].given[0]" }
       # TODO(mapeo): Fathers/MothersFamilyName — sin componente XPN que separe apellido paterno/materno

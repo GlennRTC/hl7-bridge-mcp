@@ -19,6 +19,9 @@ const entrySchema = z.object({
   ref: z.string().optional(),
   refAll: z.string().optional(),
   transform: z.string().optional(),
+  // Solo para `value`: la constante se aplica si alguna de estas rutas v2 tiene dato. Evita
+  // elementos huérfanos como telecom con system y sin value cuando PID-13 viene vacío.
+  when: z.union([z.string(), z.array(z.string())]).optional(),
 });
 type MapEntry = z.infer<typeof entrySchema>;
 const resourceSchema = z.object({
@@ -226,6 +229,8 @@ export function mapV2ToFhir(input: string | Hl7Message, opts: MapOptions = {}): 
         } else if (entry.refAll !== undefined) {
           deferredRefs.push({ resource, to: entry.to, ref: entry.refAll, many: true, ownerType: res.type });
         } else if (entry.value !== undefined) {
+          const when = typeof entry.when === 'string' ? [entry.when] : entry.when;
+          if (when !== undefined && !when.some((p) => resolveV2Path(msg, p, occurrence) !== undefined)) continue;
           setPath(resource, entry.to, entry.value);
         } else if (entry.from !== undefined) {
           const raw = resolveV2Path(msg, entry.from, occurrence);
