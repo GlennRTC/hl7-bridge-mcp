@@ -101,10 +101,10 @@ export async function validateFhirRemote(
     });
     status = res.status;
     text = await res.text();
-  } catch (e) {
-    const err = e as Error;
+  } catch (error) {
+    const err = error as Error;
     const why = err.name === 'TimeoutError' ? `sin respuesta en ${TIMEOUT_MS / 1000} s` : `${err.name}: ${err.message}`;
-    throw new Hl7BridgeError('REMOTE_VALIDATOR_UNAVAILABLE', base, `No se pudo contactar al validador remoto (${why}).`, { cause: e });
+    throw new Hl7BridgeError('REMOTE_VALIDATOR_UNAVAILABLE', base, `No se pudo contactar al validador remoto (${why}).`, { cause: error });
   }
   if (status < 200 || status > 299) {
     throw new Hl7BridgeError(
@@ -118,14 +118,14 @@ export async function validateFhirRemote(
     throw new Hl7BridgeError('REMOTE_VALIDATOR_REJECTED', base, 'El validador remoto respondió con un formato inesperado (se esperaba {outcomes: [{issues}]}).');
   }
 
-  const profiles = [...new Set(remote.map((i) => i.validationContext).filter((c): c is string => !!c && !c.startsWith(BASE_SD)))];
+  const profiles = [...new Set(remote.map((issue) => issue.validationContext).filter((context): context is string => !!context && !context.startsWith(BASE_SD)))];
   return {
-    issues: remote.map((i) => ({
-      severity: SEVERITY[i.level ?? ''] ?? 'error',
-      code: i.messageId || 'REMOTE_ISSUE',
+    issues: remote.map((issue) => ({
+      severity: SEVERITY[issue.level ?? ''] ?? 'error',
+      code: issue.messageId || 'REMOTE_ISSUE',
       // El validador intercala comentarios como /*Patient/null*/; se quitan para dejar un FHIRPath legible.
-      location: (i.location ?? '').replace(/\/\*.*?\*\//g, '') || '-',
-      message: i.message ?? '',
+      location: (issue.location ?? '').replace(/\/\*.*?\*\//g, '') || '-',
+      message: issue.message ?? '',
     })),
     validator: { kind: 'remote', url: base, ig, profiles },
   };
@@ -134,7 +134,7 @@ export async function validateFhirRemote(
 /** Copia del payload con meta.profile en cada recurso que no declare uno y tenga perfil en `claims`. */
 function withProfileClaims(payload: fhir4.Bundle | fhir4.FhirResource, claims: Record<string, string>): fhir4.Bundle | fhir4.FhirResource {
   const copy = structuredClone(payload);
-  const resources = copy.resourceType === 'Bundle' ? (copy.entry ?? []).map((e) => e.resource) : [copy];
+  const resources = copy.resourceType === 'Bundle' ? (copy.entry ?? []).map((entry) => entry.resource) : [copy];
   for (const resource of resources) {
     const claim = resource && claims[resource.resourceType];
     if (resource && claim && !resource.meta?.profile?.length) resource.meta = { ...resource.meta, profile: [claim] };
@@ -151,5 +151,5 @@ function remoteIssues(text: string): z.infer<typeof responseSchema>['outcomes'][
     return undefined;
   }
   const parsed = responseSchema.safeParse(data);
-  return parsed.success ? parsed.data.outcomes.flatMap((o) => o.issues) : undefined;
+  return parsed.success ? parsed.data.outcomes.flatMap((outcome) => outcome.issues) : undefined;
 }

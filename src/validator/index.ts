@@ -24,8 +24,8 @@ export const issueSchema = z.object({
 export function parseJsonPayload(payload: string): unknown {
   try {
     return JSON.parse(payload);
-  } catch (e) {
-    throw new Hl7BridgeError('INVALID_JSON', 'payload', `El payload no es JSON válido: ${(e as Error).message}`);
+  } catch (error) {
+    throw new Hl7BridgeError('INVALID_JSON', 'payload', `El payload no es JSON válido: ${(error as Error).message}`);
   }
 }
 
@@ -48,14 +48,14 @@ export function validateV2(input: string | Hl7Message): Issue[] {
   }
   const issues: Issue[] = [];
   for (const seg of req.segments) {
-    if (!msg.segments.some((s) => s.name === seg)) {
+    if (!msg.segments.some((segment) => segment.name === seg)) {
       const note = req.notes?.[seg];
       issues.push({ severity: 'error', code: 'MISSING_SEGMENT', location: seg, message: `Falta el segmento requerido ${seg} para ${type}.${note ? ` ${note}` : ''}` });
     }
   }
   for (const field of req.fields) {
     const seg = field.split('-')[0]!;
-    if (!msg.segments.some((s) => s.name === seg)) continue; // ya reportado como MISSING_SEGMENT
+    if (!msg.segments.some((segment) => segment.name === seg)) continue; // ya reportado como MISSING_SEGMENT
     if (resolveV2Path(msg, field) === undefined) {
       issues.push({ severity: 'error', code: 'MISSING_FIELD', location: field, message: `Falta el campo requerido ${field} para ${type}.` });
     }
@@ -67,7 +67,7 @@ export function validateFhir(input: fhir4.Bundle | fhir4.FhirResource, profile: 
   const issues: Issue[] = [];
   const profileRules = PROFILE_RULES[profile];
   // Un Bundle se valida por entradas; un recurso suelto se valida tal cual.
-  const resources = input.resourceType === 'Bundle' ? (input.entry ?? []).map((e) => e.resource) : [input];
+  const resources = input.resourceType === 'Bundle' ? (input.entry ?? []).map((entry) => entry.resource) : [input];
   for (const resource of resources) {
     if (!resource) continue;
     const rules = profileRules[resource.resourceType];
@@ -93,16 +93,16 @@ export function validateFhir(input: fhir4.Bundle | fhir4.FhirResource, profile: 
 function codingIssues(node: unknown, path: string): Issue[] {
   const issues: Issue[] = [];
   if (Array.isArray(node)) {
-    node.forEach((v, i) => issues.push(...codingIssues(v, `${path}[${i}]`)));
+    node.forEach((item, index) => issues.push(...codingIssues(item, `${path}[${index}]`)));
   } else if (node && typeof node === 'object') {
     for (const [key, value] of Object.entries(node)) {
       if (key === 'coding' && Array.isArray(value)) {
-        value.forEach((c: { system?: string; code?: string }, i) => {
-          const location = `${path}.coding[${i}]`;
-          if (!c.code) {
+        value.forEach((coding: { system?: string; code?: string }, index) => {
+          const location = `${path}.coding[${index}]`;
+          if (!coding.code) {
             issues.push({ severity: 'error', code: 'CODING_EMPTY', location, message: 'Un Coding sin code no identifica ningún concepto.' });
-          } else if (!c.system) {
-            issues.push({ severity: 'warning', code: 'CODING_NO_SYSTEM', location, message: `Coding con code "${c.code}" pero sin system: el código es ambiguo entre sistemas de codificación.` });
+          } else if (!coding.system) {
+            issues.push({ severity: 'warning', code: 'CODING_NO_SYSTEM', location, message: `Coding con code "${coding.code}" pero sin system: el código es ambiguo entre sistemas de codificación.` });
           }
         });
       }

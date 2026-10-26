@@ -34,8 +34,8 @@ const http = createHttpServer((req, res) => {
     res.writeHead(404, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'POST /mcp o GET /healthz' }));
     return;
   }
-  handleMcp(req, res).catch((e: unknown) => {
-    console.error('[error]', e);
+  handleMcp(req, res).catch((error: unknown) => {
+    console.error('[error]', error);
     if (!res.headersSent) res.writeHead(500).end();
   });
 });

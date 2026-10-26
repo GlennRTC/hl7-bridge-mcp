@@ -44,12 +44,12 @@ export type Hl7FhirMap = z.infer<typeof mapSchema>;
 export function loadMap(filePath: string): Hl7FhirMap {
   try {
     return mapSchema.parse(parseYaml(readFileSync(filePath, 'utf8')));
-  } catch (e) {
-    if (e instanceof z.ZodError) {
-      const detail = e.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
-      throw new Hl7BridgeError('MAP_INVALID', filePath, `El mapa no cumple el esquema: ${detail}`, { cause: e });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      const detail = error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');
+      throw new Hl7BridgeError('MAP_INVALID', filePath, `El mapa no cumple el esquema: ${detail}`, { cause: error });
     }
-    throw new Hl7BridgeError('MAP_INVALID', filePath, `No se pudo leer el mapa: ${(e as Error).message}`, { cause: e });
+    throw new Hl7BridgeError('MAP_INVALID', filePath, `No se pudo leer el mapa: ${(error as Error).message}`, { cause: error });
   }
 }
 
@@ -58,11 +58,11 @@ const DEFAULT_MAPS_DIR = new URL('../../maps/', import.meta.url);
 export function loadMaps(base: URL = DEFAULT_MAPS_DIR): Hl7FhirMap[] {
   const out: Hl7FhirMap[] = [];
   // Recursión: los mapas nacionales viven en subdirectorios (maps/cl, maps/co).
-  for (const e of readdirSync(base, { withFileTypes: true })) {
-    if (e.isDirectory()) {
-      out.push(...loadMaps(new URL(`${e.name}/`, base)));
-    } else if (e.name.endsWith('.yaml') || e.name.endsWith('.yml')) {
-      out.push(loadMap(fileURLToPath(new URL(e.name, base))));
+  for (const entry of readdirSync(base, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      out.push(...loadMaps(new URL(`${entry.name}/`, base)));
+    } else if (entry.name.endsWith('.yaml') || entry.name.endsWith('.yml')) {
+      out.push(loadMap(fileURLToPath(new URL(entry.name, base))));
     }
   }
   return out;
@@ -72,7 +72,7 @@ const V2_PATH = /^([A-Z][A-Z0-9]{2})-(\d+)(?:\[(\d+)\])?(?:\.(\d+)(?:\.(\d+))?)?
 
 /** Ocurrencia de segmento a usar: el ancla si es del mismo tipo, si no la primera del mensaje. */
 function resolveSegment(msg: Hl7Message, segName: string, anchor?: Segment): Segment | undefined {
-  return anchor?.name === segName ? anchor : msg.segments.find((s) => s.name === segName);
+  return anchor?.name === segName ? anchor : msg.segments.find((segment) => segment.name === segName);
 }
 
 /**
@@ -81,11 +81,11 @@ function resolveSegment(msg: Hl7Message, segName: string, anchor?: Segment): Seg
  * primera del mensaje. Campo vacío → undefined (no se mapea).
  */
 export function resolveV2Path(msg: Hl7Message, path: string, anchor?: Segment): string | undefined {
-  const m = V2_PATH.exec(path);
-  if (!m) {
+  const match = V2_PATH.exec(path);
+  if (!match) {
     throw new Hl7BridgeError('MAP_INVALID_PATH', path, 'Ruta v2 inválida; formato esperado: SEG-campo[repetición].componente.subcomponente (ej. "PID-3[1].1").');
   }
-  const [, segName, field, rep = '1', comp = '1', sub = '1'] = m;
+  const [, segName, field, rep = '1', comp = '1', sub = '1'] = match;
   const segment = resolveSegment(msg, segName!, anchor);
   const value = segment?.fields[Number(field) - 1]?.repetitions[Number(rep) - 1]?.components[Number(comp) - 1]?.subcomponents[Number(sub) - 1];
   return value === '' ? undefined : value;
@@ -103,16 +103,16 @@ function expandRepeatingEntries(entries: MapEntry[], msg: Hl7Message, anchor: Se
   const out: MapEntry[] = [];
   for (const entry of entries) {
     const from = entry.from;
-    const m = from !== undefined ? REP_WILDCARD_FROM.exec(from) : null;
-    if (m === null || from === undefined) {
+    const match = from !== undefined ? REP_WILDCARD_FROM.exec(from) : null;
+    if (match === null || from === undefined) {
       out.push(entry);
       continue;
     }
-    const [, segName, field] = m;
+    const [, segName, field] = match;
     const segment = resolveSegment(msg, segName!, anchor);
     const count = segment?.fields[Number(field) - 1]?.repetitions.length ?? 0;
-    for (let i = 1; i <= count; i++) {
-      out.push({ ...entry, from: from.replace('[*]', `[${i}]`), to: entry.to.replace('[*]', `[${i - 1}]`) });
+    for (let rep = 1; rep <= count; rep++) {
+      out.push({ ...entry, from: from.replace('[*]', `[${rep}]`), to: entry.to.replace('[*]', `[${rep - 1}]`) });
     }
   }
   return out;
@@ -123,13 +123,13 @@ const FHIR_TOKEN = /^([A-Za-z]\w*)(?:\[(\d+)\])?$/;
 function setPath(target: Record<string, unknown>, path: string, value: unknown): void {
   const tokens = path.split('.');
   let node: Record<string, unknown> = target;
-  for (let i = 0; i < tokens.length; i++) {
-    const m = FHIR_TOKEN.exec(tokens[i]!);
-    if (!m) {
-      throw new Hl7BridgeError('MAP_INVALID_PATH', path, `Ruta FHIR destino inválida en "${tokens[i]}".`);
+  for (let index = 0; index < tokens.length; index++) {
+    const match = FHIR_TOKEN.exec(tokens[index]!);
+    if (!match) {
+      throw new Hl7BridgeError('MAP_INVALID_PATH', path, `Ruta FHIR destino inválida en "${tokens[index]}".`);
     }
-    const [, prop, idx] = m;
-    const last = i === tokens.length - 1;
+    const [, prop, idx] = match;
+    const last = index === tokens.length - 1;
     if (idx === undefined) {
       if (last) {
         node[prop!] = value;
@@ -175,7 +175,7 @@ function unmappedSegments(msg: Hl7Message, map: Hl7FhirMap): string[] {
       if (seg !== undefined) used.add(seg);
     }
   }
-  return [...new Set(msg.segments.map((s) => s.name))].filter((name) => !used.has(name));
+  return [...new Set(msg.segments.map((segment) => segment.name))].filter((name) => !used.has(name));
 }
 
 /** Degradaciones del mapeo: mapa forzado que no corresponde a MSH-9, y segmentos ignorados. */
@@ -191,7 +191,7 @@ function mappingIssues(msg: Hl7Message, map: Hl7FhirMap, forcedMapId: boolean): 
     });
   }
   for (const name of unmappedSegments(msg, map)) {
-    const count = msg.segments.filter((s) => s.name === name).length;
+    const count = msg.segments.filter((segment) => segment.name === name).length;
     issues.push({
       severity: 'warning',
       code: 'UNMAPPED_SEGMENT',
@@ -205,10 +205,10 @@ function mappingIssues(msg: Hl7Message, map: Hl7FhirMap, forcedMapId: boolean): 
 export function mapV2ToFhir(input: string | Hl7Message, opts: MapOptions = {}): fhir4.Bundle {
   const msg = typeof input === 'string' ? parseHl7v2(input) : input;
   const maps = opts.maps ?? loadMaps();
-  const map = opts.mapId !== undefined ? maps.find((m) => m.id === opts.mapId) : findByMessageType(maps, msg);
+  const map = opts.mapId !== undefined ? maps.find((candidate) => candidate.id === opts.mapId) : findByMessageType(maps, msg);
   if (!map) {
     const wanted = opts.mapId ?? messageTypeOf(msg);
-    throw new Hl7BridgeError('MAP_NOT_FOUND', opts.mapId !== undefined ? 'mapId' : 'MSH-9', `No hay mapa para "${wanted}". Mapas disponibles: ${maps.map((m) => m.id).join(', ')}.`);
+    throw new Hl7BridgeError('MAP_NOT_FOUND', opts.mapId !== undefined ? 'mapId' : 'MSH-9', `No hay mapa para "${wanted}". Mapas disponibles: ${maps.map((candidate) => candidate.id).join(', ')}.`);
   }
   opts.issues?.push(...mappingIssues(msg, map, opts.mapId !== undefined));
 
@@ -218,7 +218,7 @@ export function mapV2ToFhir(input: string | Hl7Message, opts: MapOptions = {}): 
   const deferredRefs: { resource: Record<string, unknown>; to: string; ref: string; many: boolean; ownerType: string }[] = [];
 
   for (const res of map.resources) {
-    const occurrences: (Segment | undefined)[] = res.from !== undefined ? msg.segments.filter((s) => s.name === res.from) : [undefined];
+    const occurrences: (Segment | undefined)[] = res.from !== undefined ? msg.segments.filter((segment) => segment.name === res.from) : [undefined];
     for (const occurrence of occurrences) {
       const resource: Record<string, unknown> = { resourceType: res.type };
       const fullUrl = `urn:uuid:${newId()}`;
@@ -230,7 +230,7 @@ export function mapV2ToFhir(input: string | Hl7Message, opts: MapOptions = {}): 
           deferredRefs.push({ resource, to: entry.to, ref: entry.refAll, many: true, ownerType: res.type });
         } else if (entry.value !== undefined) {
           const when = typeof entry.when === 'string' ? [entry.when] : entry.when;
-          if (when !== undefined && !when.some((p) => resolveV2Path(msg, p, occurrence) !== undefined)) continue;
+          if (when !== undefined && !when.some((whenPath) => resolveV2Path(msg, whenPath, occurrence) !== undefined)) continue;
           setPath(resource, entry.to, entry.value);
         } else if (entry.from !== undefined) {
           const raw = resolveV2Path(msg, entry.from, occurrence);
@@ -262,7 +262,7 @@ export function mapV2ToFhir(input: string | Hl7Message, opts: MapOptions = {}): 
       if (targets === undefined) {
         throw new Hl7BridgeError('MAP_INVALID', map.id, `"refAll: ${ref}" apunta a un tipo de recurso que el mapa no genera.`);
       }
-      setPath(resource, to, targets.map((t) => ({ reference: t })));
+      setPath(resource, to, targets.map((targetUrl) => ({ reference: targetUrl })));
     } else {
       // ponytail: ref singular ata el recurso a la PRIMERA ocurrencia del tipo. Con >1
       // ocurrencia "la primera" es una suposición silenciosa (p.ej. varios SPM harían que
@@ -300,5 +300,5 @@ export function messageTypeOf(msg: Hl7Message): string {
 function findByMessageType(maps: Hl7FhirMap[], msg: Hl7Message): Hl7FhirMap | undefined {
   const type = messageTypeOf(msg);
   // Solo mapas base (sin profile). Los nacionales requieren mapId explícito.
-  return maps.find((m) => m.messageType === type && m.profile === undefined);
+  return maps.find((candidate) => candidate.messageType === type && candidate.profile === undefined);
 }
