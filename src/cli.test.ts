@@ -106,6 +106,21 @@ test('validate --kind fhir con --validator-url propio', async () => {
   expect(out.validator.url).toBe('https://v.example');
 });
 
+test('plain http only to loopback', async () => {
+  for (const url of ['http://localhost:8080', 'http://127.0.0.1:8080', 'http://[::1]:8080']) {
+    const fetchFn = stubFetch(() => Promise.resolve(remoteResponse([])));
+    const { exitCode } = await exec(['validate', fixturePath('oru_r01.bundle.json'), '--kind', 'fhir', '--validator', 'remote', '--validator-url', url]);
+    expect(exitCode, url).toBe(0);
+    expect(fetchFn.mock.calls[0]![0]).toBe(`${url}/validate`);
+  }
+});
+
+test('credentials in --validator-url are not echoed', async () => {
+  const { exitCode, out } = await exec(['map', fixturePath('oru_r01.hl7'), '--validator', 'remote', '--validator-url', 'https://user:secret@v.example']);
+  expect(exitCode).toBe(2);
+  expect(JSON.stringify(out)).not.toContain('secret');
+});
+
 test('usage: opciones de validador inválidas → exit 2', async () => {
   const oru = fixturePath('oru_r01.hl7');
   for (const argv of [
@@ -113,6 +128,9 @@ test('usage: opciones de validador inválidas → exit 2', async () => {
     ['map', oru, '--validator-url', 'https://x'],
     ['map', oru, '--validator', 'remote', '--validator-url', 'ftp://x'],
     ['map', oru, '--validator', 'remote', '--validator-url', 'nope'],
+    ['map', oru, '--validator', 'remote', '--validator-url', 'http://v.example'],
+    ['map', oru, '--validator', 'remote', '--validator-url', 'http://127.evil.example'],
+    ['map', oru, '--validator', 'remote', '--validator-url', 'https://user:secret@v.example'],
     ['validate', fixturePath('adt_a01.hl7'), '--kind', 'hl7v2', '--validator', 'remote'],
   ]) {
     const { exitCode, out } = await exec(argv);
