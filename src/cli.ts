@@ -61,8 +61,8 @@ export async function run(argv: string[], stdin: () => string = () => readFileSy
         'validator-url': { type: 'string' },
       },
     });
-  } catch (e) {
-    return usage((e as Error).message);
+  } catch (error) {
+    return usage((error as Error).message);
   }
   const { values, positionals } = args;
   const [cmd, src] = positionals;
@@ -94,8 +94,8 @@ export async function run(argv: string[], stdin: () => string = () => readFileSy
     if (src === undefined || src === '-') return stdin();
     try {
       return readFileSync(src, 'utf8');
-    } catch (e) {
-      throw new Hl7BridgeError('INPUT_READ', src, `No se pudo leer el archivo: ${(e as Error).message}`);
+    } catch (error) {
+      throw new Hl7BridgeError('INPUT_READ', src, `No se pudo leer el archivo: ${(error as Error).message}`);
     }
   };
 
@@ -122,7 +122,7 @@ export async function run(argv: string[], stdin: () => string = () => readFileSy
       case 'explain': {
         const parsed = issueSchema.safeParse(parseJsonPayload(input()));
         if (!parsed.success) {
-          const detail = parsed.error.issues.map((i) => `${i.path.join('.') || '(raíz)'}: ${i.message}`).join('; ');
+          const detail = parsed.error.issues.map((issue) => `${issue.path.join('.') || '(raíz)'}: ${issue.message}`).join('; ');
           throw new Hl7BridgeError('INVALID_ISSUE', 'issue', `El issue no tiene la forma {severity, code, location, message}: ${detail}`);
         }
         return { exitCode: 0, out: explainError(parsed.data) };
@@ -132,8 +132,8 @@ export async function run(argv: string[], stdin: () => string = () => readFileSy
       default:
         return usage(cmd === undefined ? 'Missing command.' : `Unknown command "${cmd}".`);
     }
-  } catch (e) {
-    return { exitCode: 1, out: { error: errorPayload(e) } };
+  } catch (error) {
+    return { exitCode: 1, out: { error: errorPayload(error) } };
   }
 }
 

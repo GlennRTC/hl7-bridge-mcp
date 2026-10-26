@@ -18,17 +18,17 @@ import { logMessageDebug, makeLogger, type Logger } from './log.js';
 // Leído del disco una vez por proceso: la descripción de mapId debe listar los mapas
 // reales, no una copia que se desincroniza. Si maps/ falta, falla al arrancar (ruidoso).
 const MAP_IDS = loadMaps()
-  .map((m) => (m.profile !== undefined ? `${m.id} (perfil ${m.profile}, requiere mapId explícito)` : m.id))
+  .map((fhirMap) => (fhirMap.profile !== undefined ? `${fhirMap.id} (perfil ${fhirMap.profile}, requiere mapId explícito)` : fhirMap.id))
   .join(', ');
 
 function ok(data: unknown): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
 }
 
-const errCode = (e: unknown): string => (e instanceof Hl7BridgeError ? e.code : 'INTERNAL');
+const errCode = (error: unknown): string => (error instanceof Hl7BridgeError ? error.code : 'INTERNAL');
 
-function fail(e: unknown): CallToolResult {
-  return { content: [{ type: 'text', text: JSON.stringify({ error: errorPayload(e) }, null, 2) }], isError: true };
+function fail(error: unknown): CallToolResult {
+  return { content: [{ type: 'text', text: JSON.stringify({ error: errorPayload(error) }, null, 2) }], isError: true };
 }
 
 /**
@@ -74,9 +74,9 @@ export function createServer(): McpServer {
         const ast = parseHl7v2(message);
         log('info', 'parse_hl7v2', 'mensaje parseado correctamente');
         return ok({ ast });
-      } catch (e) {
-        log('error', 'parse_hl7v2', `falló: ${errCode(e)}`);
-        return fail(e);
+      } catch (error) {
+        log('error', 'parse_hl7v2', `falló: ${errCode(error)}`);
+        return fail(error);
       }
     },
   );
@@ -102,10 +102,10 @@ export function createServer(): McpServer {
     async ({ message, mapId, fhirVersion, profile }, extra) => {
       // Progreso MCP: solo si el cliente pidió seguimiento (_meta.progressToken).
       const token = extra._meta?.progressToken;
-      const progress = (n: number, text: string): Promise<void> =>
+      const progress = (step: number, text: string): Promise<void> =>
         token === undefined
           ? Promise.resolve()
-          : extra.sendNotification({ method: 'notifications/progress', params: { progressToken: token, progress: n, total: 3, message: text } }).catch(() => {});
+          : extra.sendNotification({ method: 'notifications/progress', params: { progressToken: token, progress: step, total: 3, message: text } }).catch(() => {});
       try {
         if (fhirVersion === 'R6') {
           throw new Hl7BridgeError('UNSUPPORTED_VERSION', 'fhirVersion', 'FHIR R6 aún no soportado en v0.1; usa R4.');
@@ -123,9 +123,9 @@ export function createServer(): McpServer {
         await progress(3, 'Conversión completada.');
         log('info', 'map_v2_to_fhir', `conversión completada (${issues.length} issues)`);
         return ok({ bundle, validation: { issues, explained } });
-      } catch (e) {
-        log('error', 'map_v2_to_fhir', `falló: ${errCode(e)}`);
-        return fail(e);
+      } catch (error) {
+        log('error', 'map_v2_to_fhir', `falló: ${errCode(error)}`);
+        return fail(error);
       }
     },
   );
@@ -150,9 +150,9 @@ export function createServer(): McpServer {
         const issues = validateMessage(parsed, kind, profile);
         log('info', 'validate_message', `validación completada (${issues.length} issues)`);
         return ok({ issues });
-      } catch (e) {
-        log('error', 'validate_message', `falló: ${errCode(e)}`);
-        return fail(e);
+      } catch (error) {
+        log('error', 'validate_message', `falló: ${errCode(error)}`);
+        return fail(error);
       }
     },
   );
@@ -169,9 +169,9 @@ export function createServer(): McpServer {
         const explanation = explainError(issue);
         const narrative = await narrate(server, log, issue, explanation);
         return ok(narrative === undefined ? explanation : { ...explanation, narrative });
-      } catch (e) {
-        log('error', 'explain_error', `falló: ${errCode(e)}`);
-        return fail(e);
+      } catch (error) {
+        log('error', 'explain_error', `falló: ${errCode(error)}`);
+        return fail(error);
       }
     },
   );

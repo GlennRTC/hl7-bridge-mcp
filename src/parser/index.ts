@@ -10,7 +10,7 @@ export function parseHl7v2(raw: string): Hl7Message {
   if (raw.trim() === '') {
     throw new Hl7BridgeError('EMPTY_MESSAGE', 'message', 'El mensaje está vacío.');
   }
-  const lines = raw.split(/\r\n|\r|\n/).filter((l) => l !== '');
+  const lines = raw.split(/\r\n|\r|\n/).filter((line) => line !== '');
 
   const msh = lines[0];
   if (msh === undefined || !msh.startsWith('MSH')) {
@@ -37,7 +37,7 @@ export function parseHl7v2(raw: string): Hl7Message {
     subcomponent: encChars[3]!,
   };
 
-  const segments = lines.map((line, i) => parseSegment(line, encoding, i + 1));
+  const segments = lines.map((line, index) => parseSegment(line, encoding, index + 1));
   return { encoding, segments };
 }
 
@@ -55,10 +55,10 @@ function parseSegment(line: string, enc: Encoding, lineNo: number): Segment {
     // MSH-1 es el propio separador y MSH-2 los caracteres de encoding: literales, sin sub-parsear.
     return {
       name,
-      fields: [literalField(enc.field), literalField(rawFields[1] ?? ''), ...rawFields.slice(2).map((f) => parseField(f, enc))],
+      fields: [literalField(enc.field), literalField(rawFields[1] ?? ''), ...rawFields.slice(2).map((rawField) => parseField(rawField, enc))],
     };
   }
-  return { name, fields: rawFields.slice(1).map((f) => parseField(f, enc)) };
+  return { name, fields: rawFields.slice(1).map((rawField) => parseField(rawField, enc)) };
 }
 
 function parseField(raw: string, enc: Encoding): Field {

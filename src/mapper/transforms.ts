@@ -64,16 +64,16 @@ export const transforms: Record<string, Transform> = {
    * horaria por feed es TODO(mapeo) y la validación de perfil lo señalará.
    */
   hl7_datetime: (raw) => {
-    const m = /^(\d{4})(\d{2})?(\d{2})?(?:(\d{2})(\d{2})?(\d{2})?)?(?:\.\d+)?([+-]\d{4})?$/.exec(raw);
-    if (!m) {
+    const match = /^(\d{4})(\d{2})?(\d{2})?(?:(\d{2})(\d{2})?(\d{2})?)?(?:\.\d+)?([+-]\d{4})?$/.exec(raw);
+    if (!match) {
       throw new Hl7BridgeError('MAP_TRANSFORM', 'hl7_datetime', `"${raw}" no es una fecha/hora HL7 válida (YYYY[MM[DD[HHMM[SS]]]][±ZZZZ]).`);
     }
-    const [, y, mo, d, h, mi, s, tz] = m;
-    let out = y!;
-    if (mo) out += `-${mo}`;
-    if (d) out += `-${d}`;
-    if (h) {
-      out += `T${h}:${mi ?? '00'}:${s ?? '00'}`;
+    const [, year, month, day, hour, minute, second, tz] = match;
+    let out = year!;
+    if (month) out += `-${month}`;
+    if (day) out += `-${day}`;
+    if (hour) {
+      out += `T${hour}:${minute ?? '00'}:${second ?? '00'}`;
       if (tz) out += `${tz.slice(0, 3)}:${tz.slice(3)}`;
     }
     return out;
@@ -134,7 +134,7 @@ export const transforms: Record<string, Transform> = {
         const coding = [
           cweCoding(comp(segment, 5, 1), comp(segment, 5, 2), comp(segment, 5, 3)),
           cweCoding(comp(segment, 5, 4), comp(segment, 5, 5), comp(segment, 5, 6)),
-        ].filter((c): c is fhir4.Coding => c !== undefined);
+        ].filter((candidate): candidate is fhir4.Coding => candidate !== undefined);
         return { valueCodeableConcept: { coding } };
       }
       default:

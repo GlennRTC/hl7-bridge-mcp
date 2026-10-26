@@ -76,7 +76,7 @@ function loadNpmPackage(source: Extract<ProfilePackSource, { kind: 'npm-package'
   }
   // .index.json evita parsear cada archivo: lista resourceType+id por entrada.
   const index = readJson<{ files: FhirIndexEntry[] }>(`${dir}/.index.json`, source.packageName);
-  return index.files.filter((f) => f.resourceType === 'StructureDefinition').map((f) => f.id);
+  return index.files.filter((file) => file.resourceType === 'StructureDefinition').map((file) => file.id);
 }
 
 const SD_FILE = /^StructureDefinition-(.+)\.json$/;
@@ -87,7 +87,7 @@ const SD_FILE = /^StructureDefinition-(.+)\.json$/;
  */
 function loadLooseJson(dir: string): string[] {
   return readdirSync(dir)
-    .map((f) => SD_FILE.exec(f)?.[1])
+    .map((fileName) => SD_FILE.exec(fileName)?.[1])
     .filter((id): id is string => id !== undefined)
     .sort();
 }
@@ -95,8 +95,8 @@ function loadLooseJson(dir: string): string[] {
 function readJson<T>(path: string, packName: string): T {
   try {
     return JSON.parse(readFileSync(path, 'utf8')) as T;
-  } catch (e) {
-    throw new Hl7BridgeError('PROFILE_PACK_LOAD', path, `No se pudo leer el pack "${packName}": ${(e as Error).message}`, { cause: e });
+  } catch (error) {
+    throw new Hl7BridgeError('PROFILE_PACK_LOAD', path, `No se pudo leer el pack "${packName}": ${(error as Error).message}`, { cause: error });
   }
 }
 
