@@ -73,8 +73,15 @@ export async function run(argv: string[], stdin: () => string = () => readFileSy
   const validatorUrl = values['validator-url'];
   // Sin --validator remote, una URL sería ignorada y el usuario creería haber validado en remoto.
   if (validatorUrl !== undefined && !remote) return usage('--validator-url needs --validator remote.');
-  if (validatorUrl !== undefined && !(URL.canParse(validatorUrl) && ['http:', 'https:'].includes(new URL(validatorUrl).protocol))) {
-    return usage(`--validator-url must be an http(s) URL, got "${validatorUrl}".`);
+  if (validatorUrl !== undefined) {
+    const url = URL.canParse(validatorUrl) ? new URL(validatorUrl) : undefined;
+    // Credentials would be echoed in validator.url and in error locations; don't repeat the URL either.
+    if (url?.username || url?.password) return usage('--validator-url must not contain credentials.');
+    // The payload is PHI: cleartext only to this machine, TLS to anything else.
+    const loopback = url !== undefined && (url.hostname === 'localhost' || url.hostname === '[::1]' || /^127(\.\d+){3}$/.test(url.hostname));
+    if (!(url?.protocol === 'https:' || (url?.protocol === 'http:' && loopback))) {
+      return usage(`--validator-url must be https (plain http only for localhost), got "${validatorUrl}".`);
+    }
   }
 
   // Remoto o inbuilt, nunca ambos: si el remoto falla, el error sale tal cual (sin fallback).
